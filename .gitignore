@@ -2,3 +2,11 @@
 .env
 *.log
 auth_info_baileys/
+
+# Archivos de sesión de WhatsApp (CRÍTICO no subir)
+auth
+auth-*
+auth_info_baileys/
+
+# Binarios locales
+bin/
