@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HogarStock · Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; background: #f7f9fc; color: #222; }
@@ -20,14 +21,18 @@
     #estado { margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-size: 0.9rem; display: none; }
     #estado.ok { background: #d4edda; color: #155724; display: block; }
     #estado.err { background: #f8d7da; color: #721c24; display: block; }
-    .wa-status { font-size: 0.8rem; padding: 0.3rem 0.6rem; border-radius: 12px; display: inline-block; margin-bottom: 1rem; }
+    .wa-status { font-size: 0.8rem; padding: 0.3rem 0.6rem; border-radius: 12px; display: inline-block; margin-bottom: 1rem; font-weight: bold; }
     .wa-on { background: #d4edda; color: #155724; }
     .wa-off { background: #f8d7da; color: #721c24; }
+    #qrModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 1000; flex-direction: column; }
+    #qrModal .box { background: white; padding: 2rem; border-radius: 12px; text-align: center; }
+    #qrModal p { margin-top: 1rem; font-weight: bold; color: #333; }
   </style>
 </head>
 <body>
   <h1>🏠 HogarStock</h1>
-  <div id="waStatus" class="wa-status wa-off">WhatsApp: Desconectado</div>
+  <div id="waStatus" class="wa-status wa-off">WhatsApp: Comprobando...</div>
+  
   <p class="sub">Marca los productos que se han agotado:</p>
   <div id="lista">Cargando...</div>
   
@@ -35,26 +40,58 @@
   <button id="btnEnviar" onclick="enviarLista()" disabled>Enviar lista por WhatsApp</button>
   <div id="estado"></div>
 
+  <div id="qrModal">
+    <div class="box">
+      <h2>Vincular WhatsApp</h2>
+      <p>Abre WhatsApp > Dispositivos vinculados > Vincular dispositivo</p>
+      <div id="qrcode"></div>
+    </div>
+  </div>
+
   <script>
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.type === "update") render(data.productos);
+      if (data.type === "qr_update") checkWAStatus();
     };
 
-    // Comprobar estado de WhatsApp
-    setInterval(async () => {
+    let qrGenerado = false;
+
+    async function checkWAStatus() {
       const res = await fetch("/api/whatsapp-status");
       const data = await res.json();
       const el = document.getElementById("waStatus");
+      const modal = document.getElementById("qrModal");
+      
       if (data.conectado) {
         el.className = "wa-status wa-on";
         el.textContent = "WhatsApp: Conectado ✅";
+        modal.style.display = "none";
+        qrGenerado = false;
       } else {
         el.className = "wa-status wa-off";
-        el.textContent = "WhatsApp: Desconectado (Escanea el QR en la consola)";
+        el.textContent = "WhatsApp: Desconectado ❌";
+        
+        if (data.qr) {
+          modal.style.display = "flex";
+          if (!qrGenerado) {
+            document.getElementById("qrcode").innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), {
+              text: data.qr,
+              width: 250,
+              height: 250
+            });
+            qrGenerado = true;
+          }
+        } else {
+           el.textContent = "WhatsApp: Iniciando... espera";
+        }
       }
-    }, 3000);
+    }
+
+    setInterval(checkWAStatus, 3000);
+    checkWAStatus();
 
     function render(productos) {
       const cont = document.getElementById("lista");
