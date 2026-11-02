@@ -1,0 +1,71 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HogarStock · Lista de compra</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; background: #f7f9fc; color: #222; }
+    h1 { color: #128C7E; margin-bottom: 0.2rem; }
+    p.sub { color: #666; margin-top: 0; font-size: 0.9rem; }
+    .producto { display: flex; align-items: center; padding: 0.75rem; margin: 0.4rem 0; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; }
+    .producto input[type="checkbox"] { margin-right: 0.75rem; transform: scale(1.3); cursor: pointer; }
+    .producto.comprado { text-decoration: line-through; opacity: 0.5; background: #e8f5e9; }
+    .vacio { text-align: center; padding: 2rem; color: #666; }
+    .vacio .icono { font-size: 3rem; margin-bottom: 1rem; }
+    #estado { margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-size: 0.9rem; }
+    #estado.ok { background: #d4edda; color: #155724; }
+  </style>
+</head>
+<body>
+  <h1>🛒 Lista de compra</h1>
+  <p class="sub">Marca lo que vayas comprando:</p>
+  <div id="lista">Cargando...</div>
+  <div id="estado"></div>
+
+  <script>
+    let productos = [];
+    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+    ws.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === "update") {
+        productos = data.productos.filter(p => p.agotado === 1);
+        render();
+      }
+    };
+
+    function render() {
+      const cont = document.getElementById("lista");
+      if (productos.length === 0) {
+        cont.innerHTML = `<div class="vacio"><div class="icono">🎉</div><b>¡No falta nada!</b><br>La lista está completada.</div>`;
+        return;
+      }
+      cont.innerHTML = productos.map(p => `
+        <div class="producto" onclick="marcarComprado(${p.id})">
+          <input type="checkbox" onclick="event.stopPropagation(); marcarComprado(${p.id})">
+          <span>${p.nombre}</span>
+        </div>
+      `).join("");
+    }
+
+    async function marcarComprado(id) {
+      const res = await fetch(`/api/comprado/${id}`, { method: "POST" });
+      const data = await res.json();
+      const est = document.getElementById("estado");
+      if (data.completado) {
+        est.className = "ok";
+        est.textContent = "✅ ¡Compra completada! Todos los productos fueron marcados.";
+      } else if (data.ok) {
+        est.className = "";
+        est.textContent = `Faltan ${data.faltan} producto(s) por comprar.`;
+      }
+    }
+
+    fetch("/api/productos").then(r => r.json()).then(data => {
+      productos = data.filter(p => p.agotado === 1);
+      render();
+    });
+  </script>
+</body>
+</html>
