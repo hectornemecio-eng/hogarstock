@@ -25,11 +25,8 @@
     .product-item:active { transform: scale(0.98); }
     
     .checkbox { width: 24px; height: 24px; border: 2px solid #d1d5db; border-radius: 6px; margin-right: 1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
-    .product-item:active .checkbox { border-color: var(--primary); }
-    
     .product-name { font-size: 1.05rem; font-weight: 500; color: var(--text); flex: 1; }
     
-    /* Efecto al marcar */
     .product-item.comprado { opacity: 0.5; background: #f9fafb; }
     .product-item.comprado .product-name { text-decoration: line-through; color: var(--text-muted); }
     .product-item.comprado .checkbox { background: var(--primary); border-color: var(--primary); }
@@ -56,6 +53,27 @@
 
   <script>
     let productos = [];
+    let miTelefono = "";
+
+    // 1. Obtener el teléfono de la URL o del almacenamiento local
+    const urlParams = new URLSearchParams(window.location.search);
+    const telUrl = urlParams.get('tel');
+    
+    if (telUrl) {
+      miTelefono = telUrl;
+      localStorage.setItem("hogarstock_tel", telUrl);
+    } else {
+      miTelefono = localStorage.getItem("hogarstock_tel") || "";
+      if (!miTelefono) {
+        // Si no hay número, lo pedimos UNA SOLA VEZ
+        const tel = prompt("Por favor, introduce tu número de WhatsApp (ej: 34600123456) para recibir el resumen:");
+        if (tel) {
+          miTelefono = tel;
+          localStorage.setItem("hogarstock_tel", tel);
+        }
+      }
+    }
+
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
     
     ws.onmessage = (e) => {
@@ -82,16 +100,13 @@
     }
     
     async function marcar(id) {
-      // Efecto visual inmediato (optimistic UI)
       const item = document.getElementById(`item-${id}`);
       if (item) item.classList.add("comprado");
 
-      const tel = prompt("Tu número de WhatsApp para recibir el resumen (ej: 34600123456):");
-      
       const res = await fetch(`/api/comprado/${id}`, { 
         method: "POST", 
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telefono: tel }) 
+        body: JSON.stringify({ telefono: miTelefono }) // Usamos el número guardado
       });
       
       const data = await res.json();
