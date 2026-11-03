@@ -3,7 +3,7 @@ const { createServer } = require("http");
 const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
 const { default: makeWASocket, DisconnectReason } = require("@whiskeysockets/baileys");
-const { useTursoAuthState } = require('./auth-state'); // Importamos la sesión persistente
+const { useTursoAuthState } = require('./auth-state');
 
 const app = express();
 const server = createServer(app);
@@ -11,7 +11,6 @@ const wss = new WebSocketServer({ server });
 
 app.use(express.json());
 app.use(express.static("public"));
-initDB();
 
 // --- WHATSAPP (Baileys) ---
 let sock = null;
@@ -19,33 +18,35 @@ let qrActual = null;
 let whatsappConectado = false;
 
 async function iniciarWhatsApp() {
-  // Usamos la sesión guardada en Turso en lugar de archivos locales
-  const { state, saveCreds } = await useTursoAuthState();
-  
-  sock = makeWASocket({ auth: state, printQRInTerminal: false });
-  sock.ev.on("creds.update", saveCreds);
+  try {
+    const { state, saveCreds } = await useTursoAuthState();
+    sock = makeWASocket({ auth: state, printQRInTerminal: false });
+    sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      qrActual = qr;
-      whatsappConectado = false;
-      broadcast({ type: "qr_update" });
-    }
-    if (connection === "close") {
-      whatsappConectado = false;
-      qrActual = null;
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      if (shouldReconnect) setTimeout(iniciarWhatsApp, 3000);
-    } else if (connection === "open") {
-      whatsappConectado = true;
-      qrActual = null;
-      console.log("✅ WHATSAPP CONECTADO.");
-      broadcast({ type: "qr_update" });
-    }
-  });
+    sock.ev.on("connection.update", (update) => {
+      const { connection, lastDisconnect, qr } = update;
+      if (qr) {
+        qrActual = qr;
+        whatsappConectado = false;
+        broadcast({ type: "qr_update" });
+      }
+      if (connection === "close") {
+        whatsappConectado = false;
+        qrActual = null;
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) setTimeout(iniciarWhatsApp, 3000);
+      } else if (connection === "open") {
+        whatsappConectado = true;
+        qrActual = null;
+        console.log("✅ WHATSAPP CONECTADO.");
+        broadcast({ type: "qr_update" });
+      }
+    });
+  } catch (e) {
+    console.error("Error al iniciar WhatsApp:", e);
+    setTimeout(iniciarWhatsApp, 5000);
+  }
 }
-iniciarWhatsApp();
 
 async function enviarWhatsApp(telefono, mensaje) {
   if (!whatsappConectado || !sock) throw new Error("WhatsApp no está conectado.");
@@ -91,7 +92,6 @@ app.post("/api/iniciar-compra", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// MARCAR PRODUCTO COMO COMPRADO (Ya NO envía WhatsApp aquí para no hacer spam)
 app.post("/api/comprado/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -104,7 +104,6 @@ app.post("/api/comprado/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// FINALIZAR COMPRA (Envía el resumen de faltantes UNA SOLA VEZ)
 app.post("/api/finalizar-compra", async (req, res) => {
   const { telefono } = req.body;
   try {
@@ -126,6 +125,20 @@ function broadcast(data) {
   });
 }
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log(`🚀 Servidor en el puerto ${process.env.PORT || 3000}`);
-});
+// --- ARRANQUE ORDENADO ---
+(async () => {
+  try {
+    console.log("⏳ Inicializando base de datos...");
+    await initDB();
+    console.log("✅ Base de datos lista.");
+    
+    console.log("⏳ Iniciando WhatsApp...");
+    await iniciarWhatsApp();
+    
+    server.listen(process.env.PORT || 3000, () => {
+      console.log(`🚀 Servidor en el puerto ${process.env.PORT || 3000}`);
+    });
+  } catch (e) {
+    console.error("❌ Error fatal en el arranque:", e);
+  }
+})();
