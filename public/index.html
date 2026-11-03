@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -6,37 +6,26 @@
   <title>HogarStock · Admin</title>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
-    :root {
-      --primary: #10b981; /* Verde esmeralda moderno */
-      --primary-hover: #059669;
-      --bg: #f3f4f6;
-      --surface: #ffffff;
-      --text: #1f2937;
-      --text-muted: #6b7280;
-      --border: #e5e7eb;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --warning-bg: #fffbeb;
-    }
+    :root { --primary: #10b981; --primary-hover: #059669; --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --text-muted: #6b7280; --border: #e5e7eb; --warning: #f59e0b; --warning-bg: #fffbeb; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
     
-    /* Layout Responsive */
     .app-container { display: flex; flex-direction: column; max-width: 1400px; margin: 0 auto; padding: 2rem 1rem; gap: 2rem; }
     @media (min-width: 900px) { .app-container { flex-direction: row; align-items: flex-start; } }
     
-    /* Columna Principal */
     .main-content { flex: 1; min-width: 0; }
     header { margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
     h1 { color: var(--text); font-size: 1.8rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
     
-    /* Buscador */
     .search-container { position: relative; width: 100%; max-width: 400px; }
-    .search-container input { width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; transition: border-color 0.2s; outline: none; }
+    .search-container input { width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
     .search-container input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
     .search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
 
-    /* Grid de Productos */
+    /* Títulos de Categoría */
+    .category-title { grid-column: 1 / -1; font-size: 1.2rem; font-weight: 800; color: var(--primary); margin-top: 1.5rem; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 2px solid #d1fae5; text-transform: uppercase; letter-spacing: 0.5px; }
+    .category-title:first-child { margin-top: 0; }
+
     .product-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
     @media (min-width: 768px) { .product-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (min-width: 1200px) { .product-grid { grid-template-columns: repeat(3, 1fr); } }
@@ -46,16 +35,13 @@
     .product-card.agotado { background: var(--warning-bg); border-color: #fcd34d; }
     .product-card.agotado .product-name { text-decoration: line-through; color: var(--text-muted); }
     
-    /* Checkbox personalizado */
     .custom-checkbox { width: 20px; height: 20px; border: 2px solid #d1d5db; border-radius: 4px; margin-right: 1rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
     .product-card.agotado .custom-checkbox { background-color: var(--warning); border-color: var(--warning); }
     .custom-checkbox::after { content: ''; width: 5px; height: 10px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: 0; transition: opacity 0.2s; margin-bottom: 2px; }
     .product-card.agotado .custom-checkbox::after { opacity: 1; }
     
     .product-name { font-size: 0.95rem; color: var(--text); line-height: 1.2; }
-    .no-results { grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted); }
 
-    /* Sidebar (Panel de control) */
     .sidebar { width: 100%; background: var(--surface); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
     @media (min-width: 900px) { .sidebar { width: 350px; position: sticky; top: 2rem; } }
     
@@ -66,18 +52,21 @@
 
     .form-group { margin-bottom: 1.5rem; }
     .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; }
-    .input-tel { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
-    .input-tel:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
+    .input-tel { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; margin-bottom: 0.5rem; }
+    
+    /* Botones de contacto rápido */
+    .contactos-rapidos { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    .btn-contacto { flex: 1; background: #f3f4f6; color: var(--text); border: 1px solid var(--border); padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
+    .btn-contacto:hover { background: #e5e7eb; border-color: #d1d5db; }
 
-    button { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 700; width: 100%; transition: background 0.2s; display: flex; justify-content: center; align-items: center; gap: 0.5rem; }
-    button:hover { background: var(--primary-hover); }
-    button:disabled { background: #d1d5db; cursor: not-allowed; }
+    button.btn-primary { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 700; width: 100%; transition: background 0.2s; display: flex; justify-content: center; align-items: center; gap: 0.5rem; }
+    button.btn-primary:hover { background: var(--primary-hover); }
+    button.btn-primary:disabled { background: #d1d5db; cursor: not-allowed; }
     
     #estado { margin-top: 1rem; padding: 1rem; border-radius: 8px; font-size: 0.9rem; display: none; text-align: center; font-weight: 500; }
-    #estado.ok { background: #d1fae5; color: #065f46; display: block; border: 1px solid #a7f3d0; }
-    #estado.err { background: #fee2e2; color: #991b1b; display: block; border: 1px solid #fecaca; }
+    #estado.ok { background: #d1fae5; color: #065f46; display: block; }
+    #estado.err { background: #fee2e2; color: #991b1b; display: block; }
 
-    /* Modal QR */
     #qrModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 1000; padding: 1rem; }
     #qrModal .box { background: var(--surface); padding: 2.5rem; border-radius: 16px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
     #qrModal h2 { font-size: 1.5rem; margin-bottom: 0.5rem; }
@@ -87,38 +76,37 @@
 </head>
 <body>
   <div class="app-container">
-    <!-- Columna Principal -->
     <main class="main-content">
       <header>
         <h1>🏠 HogarStock</h1>
         <div class="search-container">
-          <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           <input type="text" id="search" placeholder="Buscar producto..." oninput="filtrarProductos()">
         </div>
       </header>
       <div id="lista" class="product-grid">Cargando...</div>
     </main>
 
-    <!-- Barra Lateral de Acciones -->
     <aside class="sidebar">
-      <div id="waStatus" class="wa-status wa-off">
-        <div class="dot"></div> WhatsApp: Comprobando...
-      </div>
+      <div id="waStatus" class="wa-status wa-off"><div class="dot"></div> WhatsApp: Comprobando...</div>
 
       <div class="form-group">
+        <label>Contactos frecuentes</label>
+        <div class="contactos-rapidos">
+          <button class="btn-contacto" onclick="setTel('34674278783')">Hector</button>
+          <button class="btn-contacto" onclick="setTel('34674280140')">Adriana</button>
+          <button class="btn-contacto" onclick="setTel('34674919790')">Xiomara</button>
+        </div>
+
         <label for="telefono">Número de WhatsApp destino</label>
         <input type="tel" id="telefono" class="input-tel" placeholder="Ej: 34600123456">
       </div>
 
-      <button id="btnEnviar" onclick="enviarLista()" disabled>
-        Enviar lista
-      </button>
-      
+      <button id="btnEnviar" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista</button>
       <div id="estado"></div>
     </aside>
   </div>
 
-  <!-- Modal QR -->
   <div id="qrModal">
     <div class="box">
       <h2>Vincular WhatsApp</h2>
@@ -133,108 +121,98 @@
     
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      if (data.type === "update") {
-        allProductos = data.productos;
-        filtrarProductos();
-      }
+      if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
       if (data.type === "qr_update") checkWAStatus();
     };
 
-    // Filtro de búsqueda
+    function setTel(num) { document.getElementById("telefono").value = num; }
+
     function filtrarProductos() {
       const busqueda = document.getElementById("search").value.toLowerCase();
       const filtrados = allProductos.filter(p => p.nombre.toLowerCase().includes(busqueda));
-      render(filtrados);
+      render(filtrados, busqueda !== "");
     }
 
     let qrGenerado = false;
     async function checkWAStatus() {
-      const res = await fetch("/api/whatsapp-status");
-      const data = await res.json();
-      const el = document.getElementById("waStatus");
-      const modal = document.getElementById("qrModal");
-      
-      if (data.conectado) {
-        el.className = "wa-status wa-on";
-        el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
-        modal.style.display = "none";
-        qrGenerado = false;
-      } else {
-        el.className = "wa-status wa-off";
-        el.innerHTML = '<div class="dot"></div> WhatsApp: Desconectado ❌';
-        if (data.qr) {
-          modal.style.display = "flex";
-          if (!qrGenerado) {
-            document.getElementById("qrcode").innerHTML = "";
-            new QRCode(document.getElementById("qrcode"), { text: data.qr, width: 250, height: 250 });
-            qrGenerado = true;
+      try {
+        const res = await fetch("/api/whatsapp-status");
+        const data = await res.json();
+        const el = document.getElementById("waStatus");
+        const modal = document.getElementById("qrModal");
+        
+        if (data.conectado) {
+          el.className = "wa-status wa-on";
+          el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
+          modal.style.display = "none";
+          qrGenerado = false;
+        } else {
+          el.className = "wa-status wa-off";
+          if (data.qr) {
+            el.innerHTML = '<div class="dot"></div> WhatsApp: Esperando escaneo 📱';
+            modal.style.display = "flex";
+            if (!qrGenerado) {
+              document.getElementById("qrcode").innerHTML = "";
+              new QRCode(document.getElementById("qrcode"), { text: data.qr, width: 250, height: 250 });
+              qrGenerado = true;
+            }
+          } else {
+            el.innerHTML = '<div class="dot"></div> WhatsApp: Iniciando servidor... (Espera 10s)';
           }
         }
+      } catch (e) {
+        console.error("Error comprobando estado", e);
       }
     }
+    
     setInterval(checkWAStatus, 3000);
     checkWAStatus();
 
-    function render(productos) {
+    function render(productos, isSearching) {
       const cont = document.getElementById("lista");
-      if (productos.length === 0) {
-        cont.innerHTML = '<div class="no-results">No se encontraron productos.</div>';
-        return;
-      }
+      if (productos.length === 0) { cont.innerHTML = '<div style="text-align:center;padding:2rem;color:#666;grid-column:1/-1;">No se encontraron productos.</div>'; return; }
       
-      cont.innerHTML = productos.map(p => `
-        <div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${p.id})">
-          <div class="custom-checkbox"></div>
-          <span class="product-name">${p.nombre}</span>
-        </div>
-      `).join("");
+      let html = "";
+      let currentCat = "";
+
+      productos.forEach(p => {
+        if (!isSearching && p.categoria !== currentCat) {
+          currentCat = p.categoria;
+          html += `<div class="category-title">${currentCat}</div>`;
+        }
+        
+        html += `
+          <div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${p.id})">
+            <div class="custom-checkbox"></div>
+            <span class="product-name">${p.nombre}</span>
+          </div>
+        `;
+      });
       
+      cont.innerHTML = html;
       document.getElementById("btnEnviar").disabled = !allProductos.some(p => p.agotado);
     }
 
-    async function toggleAgotado(id) {
-      await fetch(`/api/agotar/${id}`, { method: "POST" });
-    }
+    async function toggleAgotado(id) { await fetch(`/api/agotar/${id}`, { method: "POST" }); }
 
     async function enviarLista() {
       const telefono = document.getElementById("telefono").value.trim();
-      if (!telefono) return alert("Introduce un número de WhatsApp.");
+      if (!telefono) return alert("Introduce o selecciona un número de WhatsApp.");
       
       const est = document.getElementById("estado");
       const btn = document.getElementById("btnEnviar");
-      
-      est.className = "";
-      est.style.display = "block";
-      est.textContent = "Enviando...";
-      btn.disabled = true;
+      est.className = ""; est.style.display = "block"; est.textContent = "Enviando..."; btn.disabled = true;
 
       try {
-        const res = await fetch("/api/iniciar-compra", {
-          method: "POST", 
-          headers: { "Content-Type": "application/json" }, 
-          body: JSON.stringify({ telefono })
-        });
+        const res = await fetch("/api/iniciar-compra", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefono }) });
         const data = await res.json();
-        
-        if (data.ok) {
-          est.className = "ok";
-          est.innerHTML = `✅ Lista enviada (${data.cantidad} productos).`;
-        } else {
-          est.className = "err";
-          est.textContent = `❌ ${data.error}`;
-        }
-      } catch (err) {
-        est.className = "err";
-        est.textContent = "❌ Error de conexión.";
-      } finally {
-        btn.disabled = false;
-      }
+        if (data.ok) { est.className = "ok"; est.innerHTML = `✅ Lista enviada (${data.cantidad} productos).`; }
+        else { est.className = "err"; est.textContent = `❌ ${data.error}`; }
+      } catch (err) { est.className = "err"; est.textContent = "❌ Error de conexión."; }
+      finally { btn.disabled = false; }
     }
 
-    fetch("/api/productos").then(r => r.json()).then(data => {
-      allProductos = data;
-      render(allProductos);
-    });
+    fetch("/api/productos").then(r => r.json()).then(data => { allProductos = data; render(allProductos, false); });
   </script>
 </body>
 </html>
