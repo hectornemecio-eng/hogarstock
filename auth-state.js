@@ -2,45 +2,54 @@ const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const { db } = require('./db');
 
 async function readKey(key) {
-  const result = await db.execute({
-    sql: "SELECT value FROM baileys_auth WHERE key = ?",
-    args: [key]
-  });
-  if (result.rows.length === 0) return null;
   try {
-    return JSON.parse(result.rows[0].value, BufferJSON.reviver);
+    const result = await db.execute({
+      sql: "SELECT auth_value FROM baileys_auth WHERE auth_key = ?",
+      args: [key]
+    });
+    if (result.rows.length === 0) return null;
+    return JSON.parse(result.rows[0].auth_value, BufferJSON.reviver);
   } catch (e) {
+    console.error("Error leyendo clave:", key, e.message);
     return null;
   }
 }
 
 async function writeKey(key, value) {
-  const valueStr = JSON.stringify(value, BufferJSON.replacer);
-  await db.execute({
-    sql: `INSERT INTO baileys_auth (key, value) VALUES (?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    args: [key, valueStr]
-  });
+  try {
+    const valueStr = JSON.stringify(value, BufferJSON.replacer);
+    await db.execute({
+      sql: `INSERT OR REPLACE INTO baileys_auth (auth_key, auth_value) VALUES (?, ?)`,
+      args: [key, valueStr]
+    });
+  } catch (e) {
+    console.error("Error escribiendo clave:", key, e.message);
+  }
 }
 
 async function deleteKey(key) {
-  await db.execute({
-    sql: "DELETE FROM baileys_auth WHERE key = ?",
-    args: [key]
-  });
+  try {
+    await db.execute({
+      sql: "DELETE FROM baileys_auth WHERE auth_key = ?",
+      args: [key]
+    });
+  } catch (e) {
+    console.error("Error borrando clave:", key, e.message);
+  }
 }
 
 async function useTursoAuthState() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS baileys_auth (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
+      auth_key TEXT PRIMARY KEY,
+      auth_value TEXT NOT NULL
     )
   `);
 
   let creds = await readKey('creds');
   if (!creds) {
     creds = initAuthCreds();
+    await writeKey('creds', creds);
   }
 
   const state = {
