@@ -20,21 +20,37 @@ let whatsappConectado = false;
 async function iniciarWhatsApp() {
   try {
     const { state, saveCreds } = await useTursoAuthState();
-    sock = makeWASocket({ auth: state, printQRInTerminal: false });
+    
+    // CONFIGURACIÓN CLAVE PARA EVITAR BLOQUEOS EN LA NUBE
+    sock = makeWASocket({ 
+      auth: state, 
+      printQRInTerminal: false,
+      browser: ["Ubuntu", "Chrome", "20.0.04"], // Simula un navegador real
+      syncFullHistory: false, // Ahorra memoria RAM
+      defaultQueryTimeoutMs: undefined 
+    });
+    
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
       const { connection, lastDisconnect, qr } = update;
+      
       if (qr) {
+        console.log("📱 QR GENERADO. Esperando escaneo...");
         qrActual = qr;
         whatsappConectado = false;
         broadcast({ type: "qr_update" });
       }
+      
       if (connection === "close") {
         whatsappConectado = false;
         qrActual = null;
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-        if (shouldReconnect) setTimeout(iniciarWhatsApp, 3000);
+        console.log("❌ Conexión cerrada. Razón:", lastDisconnect?.error?.message);
+        if (shouldReconnect) {
+          console.log("🔄 Reconectando en 5 segundos...");
+          setTimeout(iniciarWhatsApp, 5000);
+        }
       } else if (connection === "open") {
         whatsappConectado = true;
         qrActual = null;
@@ -83,7 +99,6 @@ app.post("/api/iniciar-compra", async (req, res) => {
     
     const baseUrl = req.protocol + '://' + req.get('host');
     const enlace = `${baseUrl}/comprador.html?tel=${telefono}`;
-    
     const listaTexto = result.rows.map(p => `- ${p.nombre}`).join("\n");
     const mensaje = `🛒 *Lista de compras*\n\nHacen falta:\n${listaTexto}\n\nAbre este enlace:\n${enlace}`;
     
@@ -98,7 +113,6 @@ app.post("/api/comprado/:id", async (req, res) => {
     await db.execute({ sql: "UPDATE productos SET agotado = 0 WHERE id = ?", args: [id] });
     const result = await db.execute("SELECT * FROM productos ORDER BY categoria, nombre");
     broadcast({ type: "update", productos: result.rows });
-    
     const pendientes = result.rows.filter(p => p.agotado === 1);
     res.json({ ok: true, completado: pendientes.length === 0, faltan: pendientes.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -109,11 +123,9 @@ app.post("/api/finalizar-compra", async (req, res) => {
   try {
     const result = await db.execute("SELECT * FROM productos WHERE agotado = 1 ORDER BY categoria, nombre");
     const pendientes = result.rows;
-    
     let msg = pendientes.length === 0 
       ? "✅ *¡Compra completada!* Ya no falta nada por comprar." 
       : `⚠️ *Compra finalizada.*\n\nFaltaron por comprar:\n${pendientes.map(p => `- ${p.nombre}`).join("\n")}`;
-    
     if (telefono) await enviarWhatsApp(telefono, msg).catch(console.error);
     res.json({ ok: true, faltan: pendientes.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -125,20 +137,14 @@ function broadcast(data) {
   });
 }
 
-// --- ARRANQUE ORDENADO ---
 (async () => {
   try {
-    console.log("⏳ Inicializando base de datos...");
     await initDB();
-    console.log("✅ Base de datos lista.");
-    
-    console.log("⏳ Iniciando WhatsApp...");
     await iniciarWhatsApp();
-    
     server.listen(process.env.PORT || 3000, () => {
       console.log(`🚀 Servidor en el puerto ${process.env.PORT || 3000}`);
     });
   } catch (e) {
-    console.error("❌ Error fatal en el arranque:", e);
+    console.error("❌ Error fatal:", e);
   }
 })();
