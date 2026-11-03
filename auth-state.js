@@ -4,7 +4,7 @@ const { db } = require('./db');
 async function readKey(key) {
   try {
     const result = await db.execute({
-      sql: "SELECT auth_value FROM baileys_auth WHERE auth_key = ?",
+      sql: "SELECT auth_value FROM baileys_auth_v2 WHERE auth_key = ?", // <-- Cambiado aquí
       args: [key]
     });
     if (result.rows.length === 0) return null;
@@ -19,7 +19,7 @@ async function writeKey(key, value) {
   try {
     const valueStr = JSON.stringify(value, BufferJSON.replacer);
     await db.execute({
-      sql: `INSERT OR REPLACE INTO baileys_auth (auth_key, auth_value) VALUES (?, ?)`,
+      sql: `INSERT OR REPLACE INTO baileys_auth_v2 (auth_key, auth_value) VALUES (?, ?)`, // <-- Cambiado aquí
       args: [key, valueStr]
     });
   } catch (e) {
@@ -30,7 +30,7 @@ async function writeKey(key, value) {
 async function deleteKey(key) {
   try {
     await db.execute({
-      sql: "DELETE FROM baileys_auth WHERE auth_key = ?",
+      sql: "DELETE FROM baileys_auth_v2 WHERE auth_key = ?", // <-- Cambiado aquí
       args: [key]
     });
   } catch (e) {
@@ -39,8 +39,9 @@ async function deleteKey(key) {
 }
 
 async function useTursoAuthState() {
+  // Y cambiado aquí abajo
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS baileys_auth (
+    CREATE TABLE IF NOT EXISTS baileys_auth_v2 (
       auth_key TEXT PRIMARY KEY,
       auth_value TEXT NOT NULL
     )
