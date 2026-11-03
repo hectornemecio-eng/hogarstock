@@ -1,8 +1,9 @@
-﻿const express = require("express");
+const express = require("express");
 const { createServer } = require("http");
 const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const { default: makeWASocket, DisconnectReason } = require("@whiskeysockets/baileys");
+const { useTursoAuthState } = require('./auth-state'); // Importamos la sesión persistente
 
 const app = express();
 const server = createServer(app);
@@ -18,7 +19,9 @@ let qrActual = null;
 let whatsappConectado = false;
 
 async function iniciarWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+  // Usamos la sesión guardada en Turso en lugar de archivos locales
+  const { state, saveCreds } = await useTursoAuthState();
+  
   sock = makeWASocket({ auth: state, printQRInTerminal: false });
   sock.ev.on("creds.update", saveCreds);
 
@@ -52,7 +55,7 @@ async function enviarWhatsApp(telefono, mensaje) {
 
 // --- API ENDPOINTS ---
 app.get("/api/productos", async (req, res) => {
-  const result = await db.execute("SELECT * FROM productos");
+  const result = await db.execute("SELECT * FROM productos ORDER BY categoria, nombre");
   res.json(result.rows);
 });
 
@@ -65,7 +68,7 @@ app.post("/api/agotar/:id", async (req, res) => {
   const current = await db.execute({ sql: "SELECT agotado FROM productos WHERE id = ?", args: [id] });
   const nuevoEstado = current.rows[0].agotado === 1 ? 0 : 1;
   await db.execute({ sql: "UPDATE productos SET agotado = ? WHERE id = ?", args: [nuevoEstado, id] });
-  const result = await db.execute("SELECT * FROM productos");
+  const result = await db.execute("SELECT * FROM productos ORDER BY categoria, nombre");
   broadcast({ type: "update", productos: result.rows });
   res.json({ ok: true });
 });
@@ -74,11 +77,10 @@ app.post("/api/iniciar-compra", async (req, res) => {
   const { telefono } = req.body;
   if (!telefono) return res.status(400).json({ error: "Falta el número de teléfono" });
   try {
-    const result = await db.execute("SELECT * FROM productos WHERE agotado = 1");
+    const result = await db.execute("SELECT * FROM productos WHERE agotado = 1 ORDER BY categoria, nombre");
     if (result.rows.length === 0) return res.status(400).json({ error: "No hay productos agotados" });
     
     const baseUrl = req.protocol + '://' + req.get('host');
-    // LA MAGIA ESTÁ AQUÍ: Añadimos ?tel= al enlace
     const enlace = `${baseUrl}/comprador.html?tel=${telefono}`;
     
     const listaTexto = result.rows.map(p => `- ${p.nombre}`).join("\n");
@@ -89,21 +91,32 @@ app.post("/api/iniciar-compra", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// MARCAR PRODUCTO COMO COMPRADO (Ya NO envía WhatsApp aquí para no hacer spam)
 app.post("/api/comprado/:id", async (req, res) => {
   const { id } = req.params;
-  const { telefono } = req.body;
   try {
     await db.execute({ sql: "UPDATE productos SET agotado = 0 WHERE id = ?", args: [id] });
-    const result = await db.execute("SELECT * FROM productos");
+    const result = await db.execute("SELECT * FROM productos ORDER BY categoria, nombre");
     broadcast({ type: "update", productos: result.rows });
     
     const pendientes = result.rows.filter(p => p.agotado === 1);
+    res.json({ ok: true, completado: pendientes.length === 0, faltan: pendientes.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// FINALIZAR COMPRA (Envía el resumen de faltantes UNA SOLA VEZ)
+app.post("/api/finalizar-compra", async (req, res) => {
+  const { telefono } = req.body;
+  try {
+    const result = await db.execute("SELECT * FROM productos WHERE agotado = 1 ORDER BY categoria, nombre");
+    const pendientes = result.rows;
+    
     let msg = pendientes.length === 0 
-      ? "✅ *¡Compra completada!*" 
-      : `⚠️ *Faltan por comprar:*\n${pendientes.map(p => `- ${p.nombre}`).join("\n")}`;
+      ? "✅ *¡Compra completada!* Ya no falta nada por comprar." 
+      : `⚠️ *Compra finalizada.*\n\nFaltaron por comprar:\n${pendientes.map(p => `- ${p.nombre}`).join("\n")}`;
     
     if (telefono) await enviarWhatsApp(telefono, msg).catch(console.error);
-    res.json({ ok: true, completado: pendientes.length === 0, faltan: pendientes.length });
+    res.json({ ok: true, faltan: pendientes.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
