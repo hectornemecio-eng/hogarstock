@@ -9,69 +9,52 @@
     :root { --primary: #10b981; --primary-hover: #059669; --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --text-muted: #6b7280; --border: #e5e7eb; --warning: #f59e0b; --warning-bg: #fffbeb; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
-    
     .app-container { display: flex; flex-direction: column; max-width: 1400px; margin: 0 auto; padding: 2rem 1rem; gap: 2rem; }
     @media (min-width: 900px) { .app-container { flex-direction: row; align-items: flex-start; } }
-    
     .main-content { flex: 1; min-width: 0; }
     header { margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
     h1 { color: var(--text); font-size: 1.8rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
-    
     .search-container { position: relative; width: 100%; max-width: 400px; }
     .search-container input { width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; }
     .search-container input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
     .search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
-
-    /* Estilos del Acordeón */
     .category-block { margin-bottom: 1rem; }
     .category-header { display: flex; justify-content: space-between; align-items: center; background: var(--surface); padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; font-weight: 800; color: var(--text); text-transform: uppercase; letter-spacing: 0.5px; transition: background 0.2s; user-select: none; }
     .category-header:hover { background: #f9fafb; }
     .category-header .arrow { transition: transform 0.3s ease; font-size: 0.8rem; color: var(--text-muted); }
     .category-block.abierta .category-header { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
     .category-block.abierta .arrow { transform: rotate(90deg); }
-
-    /* Grid de productos dentro de cada categoría */
     .category-content { display: none; padding-top: 0.5rem; }
     .category-block.abierta .category-content { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
     @media (min-width: 768px) { .category-block.abierta .category-content { grid-template-columns: repeat(2, 1fr); } }
     @media (min-width: 1200px) { .category-block.abierta .category-content { grid-template-columns: repeat(3, 1fr); } }
-
     .product-card { display: flex; align-items: center; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; user-select: none; }
     .product-card:hover { border-color: #d1d5db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .product-card.agotado { background: var(--warning-bg); border-color: #fcd34d; }
     .product-card.agotado .product-name { text-decoration: line-through; color: var(--text-muted); }
-    
     .custom-checkbox { width: 20px; height: 20px; border: 2px solid #d1d5db; border-radius: 4px; margin-right: 1rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
     .product-card.agotado .custom-checkbox { background-color: var(--warning); border-color: var(--warning); }
     .custom-checkbox::after { content: ''; width: 5px; height: 10px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: 0; transition: opacity 0.2s; margin-bottom: 2px; }
     .product-card.agotado .custom-checkbox::after { opacity: 1; }
-    
     .product-name { font-size: 0.95rem; color: var(--text); line-height: 1.2; }
-
     .sidebar { width: 100%; background: var(--surface); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
     @media (min-width: 900px) { .sidebar { width: 350px; position: sticky; top: 2rem; } }
-    
     .wa-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; padding: 0.75rem; border-radius: 8px; font-weight: 600; margin-bottom: 1.5rem; }
     .wa-on { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
     .wa-off { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-
     .form-group { margin-bottom: 1.5rem; }
     .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; }
     .input-tel { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; margin-bottom: 0.5rem; }
-    
     .contactos-rapidos { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
     .btn-contacto { flex: 1; background: #f3f4f6; color: var(--text); border: 1px solid var(--border); padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
     .btn-contacto:hover { background: #e5e7eb; border-color: #d1d5db; }
-
     button.btn-primary { background: var(--primary); color: white; border: none; padding: 1rem; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 700; width: 100%; transition: background 0.2s; display: flex; justify-content: center; align-items: center; gap: 0.5rem; }
     button.btn-primary:hover { background: var(--primary-hover); }
     button.btn-primary:disabled { background: #d1d5db; cursor: not-allowed; }
-    
     #estado { margin-top: 1rem; padding: 1rem; border-radius: 8px; font-size: 0.9rem; display: none; text-align: center; font-weight: 500; }
     #estado.ok { background: #d1fae5; color: #065f46; display: block; }
     #estado.err { background: #fee2e2; color: #991b1b; display: block; }
-
     #qrModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 1000; padding: 1rem; }
     #qrModal .box { background: var(--surface); padding: 2.5rem; border-radius: 16px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
     #qrModal h2 { font-size: 1.5rem; margin-bottom: 0.5rem; }
@@ -91,7 +74,6 @@
       </header>
       <div id="lista">Cargando...</div>
     </main>
-
     <aside class="sidebar">
       <div id="waStatus" class="wa-status wa-off"><div class="dot"></div> WhatsApp: Comprobando...</div>
       <div class="form-group">
@@ -108,7 +90,6 @@
       <div id="estado"></div>
     </aside>
   </div>
-
   <div id="qrModal">
     <div class="box">
       <h2>Vincular WhatsApp</h2>
@@ -116,32 +97,26 @@
       <div id="qrcode"></div>
     </div>
   </div>
-
   <script>
     let allProductos = [];
     let categoriasAbiertas = new Set();
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-    
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
       if (data.type === "qr_update") checkWAStatus();
     };
-
     function setTel(num) { document.getElementById("telefono").value = num; }
-
     function toggleCategoria(cat) {
       if (categoriasAbiertas.has(cat)) categoriasAbiertas.delete(cat);
       else categoriasAbiertas.add(cat);
       filtrarProductos();
     }
-
     function filtrarProductos() {
       const busqueda = document.getElementById("search").value.toLowerCase();
       const filtrados = allProductos.filter(p => p.nombre.toLowerCase().includes(busqueda));
       render(filtrados, busqueda !== "");
     }
-
     let qrGenerado = false;
     async function checkWAStatus() {
       try {
@@ -149,7 +124,6 @@
         const data = await res.json();
         const el = document.getElementById("waStatus");
         const modal = document.getElementById("qrModal");
-        
         if (data.conectado) {
           el.className = "wa-status wa-on";
           el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
@@ -171,58 +145,33 @@
         }
       } catch (e) { console.error(e); }
     }
-    
     setInterval(checkWAStatus, 3000);
     checkWAStatus();
-
     function render(productos, isSearching) {
       const cont = document.getElementById("lista");
       if (productos.length === 0) { cont.innerHTML = '<div style="text-align:center;padding:2rem;color:#666;">No se encontraron productos.</div>'; return; }
-      
-      // Agrupar por categoría
       let agrupados = {};
       productos.forEach(p => {
         if (!agrupados[p.categoria]) agrupados[p.categoria] = [];
         agrupados[p.categoria].push(p);
       });
-
       let html = "";
       for (const cat in agrupados) {
-        // Si estamos buscando, abrimos todas. Si no, respetamos el estado manual.
-        // Si hay productos agotados en esta categoría, forzamos que se abra.
         const tieneAgotados = agrupados[cat].some(p => p.agotado);
         const estaAbierta = isSearching || categoriasAbiertas.has(cat) || tieneAgotados;
-
-        html += `
-          <div class="category-block ${estaAbierta ? 'abierta' : ''}">
-            <div class="category-header" onclick="toggleCategoria('${cat}')">
-              <span>${cat}</span>
-              <span class="arrow">▶</span>
-            </div>
-            <div class="category-content">
-        `;
-
+        html += `<div class="category-block ${estaAbierta ? 'abierta' : ''}"><div class="category-header" onclick="toggleCategoria('${cat}')"><span>${cat}</span><span class="arrow">▶</span></div><div class="category-content">`;
         agrupados[cat].forEach(p => {
-          html += `
-              <div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${p.id})">
-                <div class="custom-checkbox"></div>
-                <span class="product-name">${p.nombre}</span>
-              </div>
-          `;
+          html += `<div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${p.id})"><div class="custom-checkbox"></div><span class="product-name">${p.nombre}</span></div>`;
         });
-
         html += `</div></div>`;
       }
-      
       cont.innerHTML = html;
       document.getElementById("btnEnviar").disabled = !allProductos.some(p => p.agotado);
     }
-
     async function toggleAgotado(id) { await fetch(`/api/agotar/${id}`, { method: "POST" }); }
-
     async function enviarLista() {
       const telefono = document.getElementById("telefono").value.trim();
-      if (!telefono) return alert("Introduce un número de WhatsApp.");
+      if (!telefono) return alert("Introduce o selecciona un número de WhatsApp.");
       const est = document.getElementById("estado");
       const btn = document.getElementById("btnEnviar");
       est.className = ""; est.style.display = "block"; est.textContent = "Enviando..."; btn.disabled = true;
@@ -234,7 +183,6 @@
       } catch (err) { est.className = "err"; est.textContent = "❌ Error de conexión."; }
       finally { btn.disabled = false; }
     }
-
     fetch("/api/productos").then(r => r.json()).then(data => { allProductos = data; render(allProductos, false); });
   </script>
 </body>
