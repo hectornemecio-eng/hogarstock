@@ -1,130 +1,92 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HogarStock · Lista de compra</title>
   <style>
-    :root {
-      --primary: #10b981;
-      --bg: #f3f4f6;
-      --surface: #ffffff;
-      --text: #1f2937;
-      --text-muted: #6b7280;
-      --border: #e5e7eb;
-    }
+    :root { --primary: #10b981; --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --text-muted: #6b7280; --border: #e5e7eb; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-    
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
     .header { width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem; text-align: center; position: sticky; top: 0; z-index: 10; }
-    .header h1 { font-size: 1.4rem; color: var(--text); font-weight: 700; display: flex; justify-content: center; align-items: center; gap: 0.5rem; }
-    
-    .container { width: 100%; max-width: 600px; padding: 1.5rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
-    
+    .header h1 { font-size: 1.4rem; font-weight: 700; }
+    .container { width: 100%; max-width: 600px; padding: 1rem 1rem 100px 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .category-title { font-size: 1.1rem; font-weight: 800; color: var(--primary); margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #d1fae5; padding-bottom: 0.5rem; }
+    .category-title:first-child { margin-top: 0; }
     .product-item { display: flex; align-items: center; background: var(--surface); padding: 1.25rem 1rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid var(--border); cursor: pointer; transition: transform 0.1s, opacity 0.3s; user-select: none; }
     .product-item:active { transform: scale(0.98); }
-    
     .checkbox { width: 24px; height: 24px; border: 2px solid #d1d5db; border-radius: 6px; margin-right: 1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
-    .product-name { font-size: 1.05rem; font-weight: 500; color: var(--text); flex: 1; }
-    
+    .product-name { font-size: 1.05rem; font-weight: 500; flex: 1; }
     .product-item.comprado { opacity: 0.5; background: #f9fafb; }
     .product-item.comprado .product-name { text-decoration: line-through; color: var(--text-muted); }
     .product-item.comprado .checkbox { background: var(--primary); border-color: var(--primary); }
     .product-item.comprado .checkbox::after { content: ''; width: 6px; height: 12px; border: solid white; border-width: 0 3px 3px 0; transform: rotate(45deg); margin-bottom: 2px; }
-
     .vacio { text-align: center; padding: 4rem 1rem; color: var(--text-muted); }
     .vacio .icon { font-size: 4rem; margin-bottom: 1rem; display: block; }
-    .vacio h2 { color: var(--text); margin-bottom: 0.5rem; }
-    
+    .btn-finalizar { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); width: calc(100% - 3rem); max-width: 400px; background: var(--text); color: white; padding: 1rem; border: none; border-radius: 50px; font-size: 1.1rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: background 0.2s, transform 0.1s; }
+    .btn-finalizar:active { transform: translateX(-50%) scale(0.95); }
+    .btn-finalizar:disabled { background: #9ca3af; }
     #estado { padding: 1rem; border-radius: 8px; text-align: center; font-weight: 600; margin-top: 1rem; display: none; }
     #estado.ok { background: #d1fae5; color: #065f46; display: block; }
     #estado.warn { background: #fef3c7; color: #92400e; display: block; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>🛒 Lista de Compra</h1>
-  </div>
-  
-  <div class="container">
-    <div id="lista">Cargando...</div>
-    <div id="estado"></div>
-  </div>
-
+  <div class="header"><h1>🛒 Lista de Compra</h1></div>
+  <div class="container"><div id="lista">Cargando...</div><div id="estado"></div></div>
+  <button class="btn-finalizar" id="btnFinalizar" onclick="finalizarCompra()">Terminar compra (Enviar resumen)</button>
   <script>
     let productos = [];
     let miTelefono = "";
-
-    // 1. Obtener el teléfono de la URL o del almacenamiento local
     const urlParams = new URLSearchParams(window.location.search);
     const telUrl = urlParams.get('tel');
-    
-    if (telUrl) {
-      miTelefono = telUrl;
-      localStorage.setItem("hogarstock_tel", telUrl);
-    } else {
+    if (telUrl) { miTelefono = telUrl; localStorage.setItem("hogarstock_tel", telUrl); }
+    else {
       miTelefono = localStorage.getItem("hogarstock_tel") || "";
       if (!miTelefono) {
-        // Si no hay número, lo pedimos UNA SOLA VEZ
-        const tel = prompt("Por favor, introduce tu número de WhatsApp (ej: 34600123456) para recibir el resumen:");
-        if (tel) {
-          miTelefono = tel;
-          localStorage.setItem("hogarstock_tel", tel);
-        }
+        const tel = prompt("Introduce tu número de WhatsApp (ej: 34600123456):");
+        if (tel) { miTelefono = tel; localStorage.setItem("hogarstock_tel", tel); }
       }
     }
-
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-    
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      if (data.type === "update") {
-        productos = data.productos.filter(p => p.agotado === 1);
-        render();
-      }
+      if (data.type === "update") { productos = data.productos.filter(p => p.agotado === 1); render(); }
     };
-    
     function render() {
       const cont = document.getElementById("lista");
       if (productos.length === 0) {
         cont.innerHTML = `<div class="vacio"><span class="icon">🎉</span><h2>¡No falta nada!</h2><p>La compra está completada.</p></div>`;
+        document.getElementById("btnFinalizar").style.display = "none";
         return;
       }
-      
-      cont.innerHTML = productos.map(p => `
-        <div class="product-item" id="item-${p.id}" onclick="marcar(${p.id})">
-          <div class="checkbox"></div>
-          <span class="product-name">${p.nombre}</span>
-        </div>
-      `).join("");
+      let html = "";
+      let currentCat = "";
+      productos.forEach(p => {
+        if (p.categoria !== currentCat) {
+          currentCat = p.categoria;
+          html += `<div class="category-title">${currentCat}</div>`;
+        }
+        html += `<div class="product-item" id="item-${p.id}" onclick="marcar(${p.id})"><div class="checkbox"></div><span class="product-name">${p.nombre}</span></div>`;
+      });
+      cont.innerHTML = html;
     }
-    
     async function marcar(id) {
       const item = document.getElementById(`item-${id}`);
       if (item) item.classList.add("comprado");
-
-      const res = await fetch(`/api/comprado/${id}`, { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telefono: miTelefono }) // Usamos el número guardado
-      });
-      
+      await fetch(`/api/comprado/${id}`, { method: "POST" });
+    }
+    async function finalizarCompra() {
+      const btn = document.getElementById("btnFinalizar");
+      btn.disabled = true; btn.textContent = "Enviando resumen...";
+      const res = await fetch(`/api/finalizar-compra`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefono: miTelefono }) });
       const data = await res.json();
       const est = document.getElementById("estado");
-      
-      if (data.completado) {
-        est.className = "ok";
-        est.textContent = "✅ ¡Todo comprado! Lista finalizada.";
-      } else {
-        est.className = "warn";
-        est.textContent = `Faltan ${data.faltan} productos por comprar.`;
-      }
+      est.className = data.faltan === 0 ? "ok" : "warn";
+      est.textContent = data.faltan === 0 ? "✅ ¡Todo comprado! Resumen enviado." : `⚠️ Compra finalizada. Resumen enviado (faltaron ${data.faltan}).`;
+      btn.style.display = "none";
     }
-    
-    fetch("/api/productos").then(r => r.json()).then(data => {
-      productos = data.filter(p => p.agotado === 1);
-      render();
-    });
+    fetch("/api/productos").then(r => r.json()).then(data => { productos = data.filter(p => p.agotado === 1); render(); });
   </script>
 </body>
 </html>
