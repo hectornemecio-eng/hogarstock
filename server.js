@@ -22,10 +22,11 @@ async function iniciarWhatsApp() {
     // Usamos la sesión persistente en Turso
     const { state, saveCreds } = await useTursoAuthState();
     
-    // Configuración por defecto (limpia) que funcionó la primera vez
+    // Configuración con identificación "Mac OS" para intentar evitar bloqueos
     sock = makeWASocket({ 
       auth: state, 
-      printQRInTerminal: false
+      printQRInTerminal: false,
+      browser: ["Mac OS", "Chrome", "14.4.1"]
     });
     
     sock.ev.on("creds.update", saveCreds);
