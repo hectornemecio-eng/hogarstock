@@ -2,7 +2,19 @@ const express = require("express");
 const { createServer } = require("http");
 const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+let makeWASocket, useMultiFileAuthState, DisconnectReason;
+let promesaBaileys;
+
+async function cargarBaileys() {
+  if (!promesaBaileys) {
+    promesaBaileys = import("@whiskeysockets/baileys").then((modulo) => {
+      makeWASocket = modulo.default;
+      useMultiFileAuthState = modulo.useMultiFileAuthState;
+      DisconnectReason = modulo.DisconnectReason;
+    });
+  }
+  await promesaBaileys;
+}
 
 const app = express();
 const server = createServer(app);
@@ -17,6 +29,7 @@ let whatsappConectado = false;
 
 async function iniciarWhatsApp() {
   try {
+    await cargarBaileys();
     const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
     sock = makeWASocket({ auth: state, printQRInTerminal: false });
     sock.ev.on("creds.update", saveCreds);
