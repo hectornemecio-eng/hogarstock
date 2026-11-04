@@ -11,43 +11,30 @@ const wss = new WebSocketServer({ server });
 app.use(express.json());
 app.use(express.static("public"));
 
-// --- WHATSAPP (Baileys con archivos locales) ---
 let sock = null;
 let qrActual = null;
 let whatsappConectado = false;
 
 async function iniciarWhatsApp() {
   try {
-    // Volvemos a la autenticación por archivos locales
     const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-    
-    sock = makeWASocket({ 
-      auth: state, 
-      printQRInTerminal: false
-    });
-    
+    sock = makeWASocket({ auth: state, printQRInTerminal: false });
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
       const { connection, lastDisconnect, qr } = update;
-      
       if (qr) {
         console.log("📱 QR GENERADO. Esperando escaneo...");
         qrActual = qr;
         whatsappConectado = false;
         broadcast({ type: "qr_update" });
       }
-      
       if (connection === "close") {
         whatsappConectado = false;
         qrActual = null;
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         console.log("❌ Conexión cerrada. Razón:", lastDisconnect?.error?.message);
-        
-        if (shouldReconnect) {
-          console.log("🔄 Reconectando en 5 segundos...");
-          setTimeout(iniciarWhatsApp, 5000);
-        }
+        if (shouldReconnect) setTimeout(iniciarWhatsApp, 5000);
       } else if (connection === "open") {
         whatsappConectado = true;
         qrActual = null;
@@ -67,7 +54,6 @@ async function enviarWhatsApp(telefono, mensaje) {
   await sock.sendMessage(jid, { text: mensaje });
 }
 
-// --- API ENDPOINTS ---
 app.get("/api/productos", async (req, res) => {
   try {
     const result = await db.execute("SELECT * FROM productos ORDER BY categoria, nombre");
@@ -130,14 +116,12 @@ app.post("/api/finalizar-compra", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- WebSockets ---
 function broadcast(data) {
   wss.clients.forEach(client => {
     if (client.readyState === 1) client.send(JSON.stringify(data));
   });
 }
 
-// --- ARRANQUE ---
 (async () => {
   try {
     await initDB();
