@@ -60,10 +60,12 @@ jobs:
           node --check whatsapp/dispatch-service.js
           node --check tests/wa-dispatch.test.js
           node --check whatsapp/inbox-store.js
-          node --check tests/wa-inbox.test.js
+          node --check tests/wa-inbox.test.js tests/wa-apply-proposal.test.js
           node --check whatsapp/inbound-baileys.js
           node --check tests/wa-inbound-baileys.test.js
           node --check tests/wa-inbox-http.test.js
+          node --check whatsapp/apply-proposal.js
+          node --check tests/wa-apply-proposal.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
