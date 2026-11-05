@@ -45,9 +45,12 @@ jobs:
           node --check tests/comprador-v3-static.test.js
           node --check compras/store.js
           node --check tests/compras.test.js
+          node --check catalogo/store.js
+          node --check tests/catalogo.test.js
+          node --check tests/admin-v3.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
-        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js
+        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js
 
       - name: Validar sintaxis de integracion libSQL
         run: node --check tests/libsql-real.test.js
@@ -68,4 +71,4 @@ jobs:
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js
+        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js
