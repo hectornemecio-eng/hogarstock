@@ -32,6 +32,8 @@ jobs:
         run: |
           node --check security/access.js
           node --check tests/access.test.js
+          node --check security/store.js
+          node --check tests/store.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
-        run: node --test tests/db-sqlite.test.js tests/access.test.js
+        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js
