@@ -172,7 +172,7 @@ function crearCoordinadorWhatsApp({
     return numero;
   }
 
-  async function enviarTexto({ telefono, mensaje } = {}) {
+  async function enviarInterno({ telefono, mensaje } = {}, incluirReferencia = false) {
     // NO pasar teléfonos o mensajes a logs, callbacks de estado ni excepciones.
     const numero = normalizarTelefono(telefono);
     if (typeof mensaje !== "string" || !mensaje.trim() ||
@@ -194,21 +194,25 @@ function crearCoordinadorWhatsApp({
         return { estado: "indeterminado", codigo: "WA_CONEXION_CAMBIO_DURANTE_ENVIO" };
       }
       const id = respuesta?.key?.id;
-      if (typeof id !== "string" || !id) {
+      if (typeof id !== "string" || !/^[A-Za-z0-9_-]{4,160}$/.test(id)) {
         return { estado: "indeterminado", codigo: "WA_SIN_ACUSE_DEL_PROVEEDOR" };
       }
-      return {
+      const resultado = {
         estado: "aceptado_por_proveedor",
         codigo: "WA_PROVEEDOR_ACEPTO_SOLICITUD",
         entregado: false,
-        // No incluye ID remoto, JID, destinatario ni contenido.
       };
+      // Referencia exclusivamente para la capa interna; nunca mostrarla
+      // directamente en HTTP, WebSocket, interfaz o logs.
+      return incluirReferencia ? {...resultado, proveedorId: id} : resultado;
     } catch (_) {
       // Puede haber sido enviado justo antes de una caída de conexión.
       // No reintentar automáticamente: riesgo de mensajes duplicados.
       return { estado: "indeterminado", codigo: "WA_ENVIO_NO_VERIFICABLE" };
     }
   }
+  async function enviarTexto(datos) { return enviarInterno(datos, false); }
+  async function enviarTextoParaRegistro(datos) { return enviarInterno(datos, true); }
   async function detener() {
     detenido = true;
     secuencia++;
@@ -222,6 +226,7 @@ function crearCoordinadorWhatsApp({
     iniciar,
     detener,
     enviarTexto,
+    enviarTextoParaRegistro,
     leerEstadoPublico: vistaPublica,
     leerEstadoPrivado,
   });
