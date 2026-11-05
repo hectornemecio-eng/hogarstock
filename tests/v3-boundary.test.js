@@ -21,7 +21,7 @@ async function pedir(origen, ruta, metodo = "GET", cuerpo = undefined, cookies =
   const json = cuerpo === undefined ? null : JSON.stringify(cuerpo);
   return new Promise((resolve, reject) => {
     const req = https.request(url, {
-      method: metodo, rejectUnauthorized: false,
+      method: metodo, rejectUnauthorized: false, agent: false, timeout: 5000,
       headers: {
         ...(json === null ? {} : { "content-type": "application/json" }),
         ...(cookies ? { cookie: cookies } : {}),
@@ -37,6 +37,7 @@ async function pedir(origen, ruta, metodo = "GET", cuerpo = undefined, cookies =
       }));
     });
     req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("HTTPS_TIMEOUT")));
     if (json !== null) req.write(json);
     req.end();
   });
@@ -73,7 +74,7 @@ test("Frontera V2: HTML de las pantallas antiguas no se sirve", async (t) => {
   for (const ruta of ["/admin-v3.html", "/comprador-v3.html"]) {
     const url = new URL(ruta, origen);
     const respuesta = await new Promise((resolve, reject) => {
-      https.get(url, { rejectUnauthorized: false }, (res) => {
+      https.get(url, { rejectUnauthorized: false, agent: false, timeout: 5000 }, (res) => {
         res.resume();
         res.on("end", () => resolve(res.statusCode));
       }).on("error", reject);
