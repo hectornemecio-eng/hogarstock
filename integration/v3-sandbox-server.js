@@ -108,9 +108,13 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     async function cerrar() {
       if (cerrado) return;
       cerrado = true;
-      await new Promise((resolve, reject) =>
+      const cierre = new Promise((resolve, reject) =>
         servidor.close((err) => err ? reject(err) : resolve())
       );
+      // Solo staging: forzar el cierre de conexiones HTTPS ociosas
+      // para que los agentes de test no queden retenidos por keep-alive.
+      servidor.closeAllConnections();
+      await cierre;
       cliente.close();
       rmSync(carpeta, { recursive: true, force: true });
     }
