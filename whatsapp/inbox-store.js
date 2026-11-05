@@ -177,7 +177,8 @@ function crearBandejaWhatsApp({cliente,compras,claveHmacHex,reloj=Date.now}={}){
       creado:Number(f.creado),revisado:f.revisado==null?null:Number(f.revisado),
     }));
   }
-  async function revisar({id,decision}={}){
+  async function revisar({id,decision,compraId=null}={}){
+    if(compraId!==null)idPositivo(compraId,"WA_COMPRA");
     exigirInit();
     if(typeof id!=="string"||!/^[0-9a-f-]{36}$/i.test(id)){
       throw new TypeError("WA_INBOX_ID_INVALIDO");
@@ -189,8 +190,9 @@ function crearBandejaWhatsApp({cliente,compras,claveHmacHex,reloj=Date.now}={}){
     const cambio=await cliente.execute({
       sql:"UPDATE "+TABLA_INBOX+
        " SET estado=?,revisado=? WHERE id=? AND estado IN"+
-       " ('pendiente_revision','no_interpretable','ambigua')",
-      args:[decision,ahora(),id],
+       " ('pendiente_revision','no_interpretable','ambigua')"+
+       (compraId===null?"":" AND compra_id=?"),
+      args:compraId===null?[decision,ahora(),id]:[decision,ahora(),id,compraId],
     });
     return {actualizado:Number(cambio.rowsAffected)===1};
   }
