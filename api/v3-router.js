@@ -54,7 +54,7 @@ function validarOrigenConfigurado(origen) {
   return origen;
 }
 
-function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, bandejaWhatsApp = null, origen, reloj = Date.now }) {
+function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, bandejaWhatsApp = null, aplicadorWhatsApp = null, origen, reloj = Date.now }) {
   const requerido = [
     [acceso, ["iniciarSesionAdmin", "autorizarAdmin", "cerrarSesionAdmin",
       "emitirPermisoCompra", "autorizarCompra"]],
@@ -76,6 +76,10 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
   if (bandejaWhatsApp && ["listarPorCompra", "revisar"].some(
     nombre => typeof bandejaWhatsApp[nombre] !== "function")) {
     throw new TypeError("Bandeja WhatsApp incompleta");
+  }
+  if (aplicadorWhatsApp && ["aplicar", "listarPorCompra"].some(n =>
+    typeof aplicadorWhatsApp[n] !== "function")) {
+    throw new TypeError("Aplicador WhatsApp incompleto");
   }
   validarOrigenConfigurado(origen);
   if (typeof reloj !== "function") throw new TypeError("Reloj invalido");
@@ -120,6 +124,9 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
         PRODUCTO_INEXISTENTE: 400,
         PRODUCTO_DUPLICADO: 409,
         CONFLICTO_ESTADO_PRODUCTO: 409,
+        WA_PROPUESTA_AJENA: 409,
+        WA_PROPUESTA_NO_APLICABLE: 409,
+        WA_PROPUESTA_INEXISTENTE: 404,
       };
       if (Object.hasOwn(estados, codigo)) {
         return res.status(estados[codigo]).json({ error: codigo });
@@ -321,6 +328,32 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
         });
         if (!resultado.actualizado) return res.status(409).json({ error: "RESPUESTA_NO_PENDIENTE_O_AJENA" });
         return res.json({ actualizado: true, aplicadaAlInventario: false });
+      })
+    );
+  }
+
+  if (aplicadorWhatsApp) {
+    router.get("/admin/compras/:compraId/aplicaciones", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const compraId = enteroPositivo(req.params.compraId);
+        if (compraId === null) return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
+        const compra = await compras.obtenerCompra({ compraId });
+        if (!compra) return res.status(404).json({ error: "COMPRA_NO_ENCONTRADA" });
+        return res.json({ aplicaciones: await aplicadorWhatsApp.listarPorCompra({ compraId }) });
+      })
+    );
+    router.post("/admin/compras/:compraId/respuestas/:respuestaId/aplicar", exigirAdmin,
+      (req, res) => ejecutar(req, res, async () => {
+        const compraId = enteroPositivo(req.params.compraId);
+        if (compraId === null) return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
+        if (!req.body || !Number.isSafeInteger(req.body.revisionEsperada) || req.body.revisionEsperada < 0 || req.body.confirmacion !== true) {
+          return res.status(400).json({ error: "CONFIRMACION_O_REVISION_INVALIDA" });
+        }
+        const resultado = await aplicadorWhatsApp.aplicar({ compraId,
+          respuestaId: req.params.respuestaId,
+          revisionEsperada: req.body.revisionEsperada,
+        });
+        return res.json({ aplicacion: resultado, inventarioGlobalModificado: false });
       })
     );
   }
