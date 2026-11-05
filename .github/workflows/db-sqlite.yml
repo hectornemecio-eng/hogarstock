@@ -60,7 +60,7 @@ jobs:
           node --check whatsapp/dispatch-service.js
           node --check tests/wa-dispatch.test.js
           node --check whatsapp/inbox-store.js
-          node --check tests/wa-inbox.test.js tests/wa-apply-proposal.test.js
+          node --check tests/wa-inbox.test.js
           node --check whatsapp/inbound-baileys.js
           node --check tests/wa-inbound-baileys.test.js
           node --check tests/wa-inbox-http.test.js
@@ -85,7 +85,7 @@ jobs:
       - name: Ejecutar tests con cliente libSQL real y archivo local
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/libsql-real.test.js tests/wa-auth-store.test.js tests/wa-outbox.test.js tests/wa-dispatch.test.js tests/wa-inbox.test.js
+        run: node --test tests/libsql-real.test.js tests/wa-auth-store.test.js tests/wa-outbox.test.js tests/wa-dispatch.test.js tests/wa-inbox.test.js tests/wa-apply-proposal.test.js
 
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
