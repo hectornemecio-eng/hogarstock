@@ -1,0 +1,38 @@
+name: HogarStock - compatibilidad Baileys cifrado
+
+on:
+  push:
+    branches:
+      - seguridad-pruebas-2026-11-05
+    paths:
+      - 'whatsapp/**'
+      - 'tests/wa-baileys-compat.test.js'
+      - '.github/workflows/wa-compat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-wa-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxis de modulo y prueba
+        run: |
+          node --check whatsapp/auth-store.js
+          node --check tests/wa-baileys-compat.test.js
+      - name: Instalar dependencias de prueba fuera de la aplicacion
+        run: |
+          mkdir -p "$RUNNER_TEMP/hogarstock-wa-test"
+          npm install --prefix "$RUNNER_TEMP/hogarstock-wa-test" --no-save --package-lock=false \
+            @libsql/client@0.14.0 @whiskeysockets/baileys@7.0.0-rc11
+      - name: Ejecutar compatibilidad local sin WhatsApp
+        env:
+          NODE_PATH: ${{ runner.temp }}/hogarstock-wa-test/node_modules
+          HOGARSTOCK_TEST_DEPS: ${{ runner.temp }}/hogarstock-wa-test
+        run: node --test tests/wa-baileys-compat.test.js
