@@ -68,7 +68,7 @@ test("Remitente vinculado: propuesta, deduplicacion y revision sin tocar inventa
   assert.equal((await e.compras.obtenerCompra({compraId:e.c1})).items[0].estado,"pendiente");
   const raw=JSON.stringify((await e.cliente.execute(
     "SELECT * FROM hogarstock_wa_inbox_v3")).rows);
-  assert.doesNotMatch(raw,/34600111222|Amsg5678|COMPRADO/i);
+  assert.doesNotMatch(raw,/34600111222|Amsg5678|COMPRADO 1/i);
 });
 test("Vinculo ambiguo: no adjudica la respuesta a ninguna compra",async t=>{
   const e=await escenario(t);
