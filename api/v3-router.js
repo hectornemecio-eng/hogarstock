@@ -54,7 +54,7 @@ function validarOrigenConfigurado(origen) {
   return origen;
 }
 
-function crearRouterV3({ acceso, compras, conciliador, origen, reloj = Date.now }) {
+function crearRouterV3({ acceso, compras, conciliador, sesionesComprador = null, origen, reloj = Date.now }) {
   const requerido = [
     [acceso, ["iniciarSesionAdmin", "autorizarAdmin", "cerrarSesionAdmin",
       "emitirPermisoCompra", "autorizarCompra"]],
@@ -64,6 +64,10 @@ function crearRouterV3({ acceso, compras, conciliador, origen, reloj = Date.now 
   if (requerido.some(([objeto, nombres]) =>
     !objeto || nombres.some((nombre) => typeof objeto[nombre] !== "function"))) {
     throw new TypeError("Dependencias V3 incompletas");
+  }
+  if (sesionesComprador && ["canjearInvitacion", "autorizarSesion", "revocarSesion"].some(
+    (nombre) => typeof sesionesComprador[nombre] !== "function")) {
+    throw new TypeError("Servicio de sesiones de comprador incompleto");
   }
   validarOrigenConfigurado(origen);
   if (typeof reloj !== "function") throw new TypeError("Reloj invalido");
@@ -127,15 +131,28 @@ function crearRouterV3({ acceso, compras, conciliador, origen, reloj = Date.now 
     }
   }
 
+  function cookieComprador(req, compraId) {
+    const nombre = "hs_buyer_v3_" + compraId + "=";
+    const cadena = req.headers.cookie || "";
+    if (typeof cadena !== "string" || cadena.length > 4096) return "";
+    const entrada = cadena.split(";").map((x) => x.trim()).find((x) => x.startsWith(nombre));
+    const token = entrada ? entrada.slice(nombre.length) : "";
+    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : "";
+  }
+
   async function exigirComprador(req, res, next) {
     const compraId = enteroPositivo(req.params.compraId);
     if (compraId === null) {
       return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
     }
     try {
-      const autorizado = await acceso.autorizarCompra({
-        compraId, token: tokenCompraDeCabecera(req),
-      });
+      const autorizado = sesionesComprador
+        ? await sesionesComprador.autorizarSesion({
+          compraId, sesion: cookieComprador(req, compraId),
+        })
+        : await acceso.autorizarCompra({
+          compraId, token: tokenCompraDeCabecera(req),
+        });
       if (!autorizado) {
         return res.status(403).json({ error: "COMPRA_NO_AUTORIZADA" });
       }
@@ -261,6 +278,49 @@ function crearRouterV3({ acceso, compras, conciliador, origen, reloj = Date.now 
       return res.json({ informe });
     })
   );
+
+  if (sesionesComprador) {
+    router.post("/compras/:compraId/activar", (req, res) =>
+      ejecutar(req, res, async () => {
+        const compraId = enteroPositivo(req.params.compraId);
+        if (compraId === null) return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
+        if (!req.body || typeof req.body.invitacion !== "string") {
+          return res.status(400).json({ error: "DATOS_INVALIDOS" });
+        }
+        let resultado;
+        try {
+          resultado = await sesionesComprador.canjearInvitacion({
+            compraId, invitacion: req.body.invitacion,
+          });
+        } catch (error) {
+          if (error && error.message === "INVITACION_INVALIDA") {
+            return res.status(403).json({ error: "INVITACION_INVALIDA" });
+          }
+          throw error;
+        }
+        res.cookie("hs_buyer_v3_" + compraId, resultado.sesion, {
+          httpOnly: true, secure: true, sameSite: "strict",
+          path: "/api/v3/compras/" + compraId,
+          maxAge: Math.max(1, resultado.expira - reloj()),
+        });
+        return res.json({ ok: true, compraId, expira: resultado.expira });
+      })
+    );
+
+    router.post("/compras/:compraId/salir", exigirComprador, (req, res) =>
+      ejecutar(req, res, async () => {
+        const id = req.compraV3Id;
+        await sesionesComprador.revocarSesion({
+          compraId: id, sesion: cookieComprador(req, id),
+        });
+        res.clearCookie("hs_buyer_v3_" + id, {
+          httpOnly: true, secure: true, sameSite: "strict",
+          path: "/api/v3/compras/" + id,
+        });
+        return res.json({ ok: true });
+      })
+    );
+  }
 
   router.get("/compras/:compraId", exigirComprador, (req, res) =>
     ejecutar(req, res, async () => {
