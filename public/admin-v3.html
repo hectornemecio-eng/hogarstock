@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>HogarStock V3 · Administración (pruebas)</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#19382e;background:#f4f7f6;--primary:#106d58;--line:#dce7e2;--muted:#546a62}
+*{box-sizing:border-box}body{margin:0}header{background:#123b31;color:white;padding:20px 20px 56px}header .wrap{max-width:1100px;margin:auto}h1{font-size:clamp(25px,4vw,34px);margin:4px 0}h2{margin:0 0 14px;font-size:21px}h3{margin:0 0 8px;font-size:17px}p{line-height:1.45}
+main{max-width:1100px;margin:-29px auto 36px;padding:0 16px}.panel{background:white;border:1px solid var(--line);border-radius:15px;padding:20px;margin:0 0 16px;box-shadow:0 5px 22px #103a2711}
+.bar{display:flex;gap:11px;align-items:center;justify-content:space-between;flex-wrap:wrap}.flex{display:flex;gap:10px;flex-wrap:wrap}.grow{flex:1}.muted,small{color:var(--muted)}.muted{font-size:14px}.pill{border-radius:100px;padding:5px 10px;font-size:13px;background:#e3f1e9;color:#155a49}
+button{border:0;border-radius:9px;padding:11px 15px;background:var(--primary);color:white;font:inherit;font-weight:650;cursor:pointer}button.secondary{background:#e8f2ee;color:#19493d}button.danger{background:#f9e5e4;color:#982e29}button:disabled{opacity:.45;cursor:not-allowed}
+input,select{border:1px solid #bbd0c8;border-radius:9px;padding:11px 12px;font:inherit;min-width:0;background:white;color:inherit}
+input[type=checkbox]{width:19px;height:19px;accent-color:var(--primary)}
+label{font-size:14px;font-weight:600}form .field{display:grid;gap:5px;flex:1;min-width:160px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #f7b340;outline-offset:2px}
+nav{display:flex;gap:8px;margin-bottom:17px;flex-wrap:wrap}nav button{background:#e5eee9;color:#204c3f}nav button[aria-selected=true]{background:var(--primary);color:white}
+#status{min-height:25px;font-weight:600}#status.error{color:#ab3027}#status.ok{color:#0f7c5d}
+table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}th,td{padding:11px 9px;border-bottom:1px solid var(--line)}td{vertical-align:middle}
+.scroll{overflow:auto}.nowrap{white-space:nowrap}.right{text-align:right}.big{font-size:28px;font-weight:800}.stat{flex:1;min-width:155px;border:1px solid var(--line);border-radius:12px;padding:16px}
+.product{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.product-name{flex:1;min-width:0}.product-name strong{display:block;overflow-wrap:anywhere}.product-name small{display:block}
+.progress{height:9px;border-radius:6px;background:#e6efeb;overflow:hidden}.progress>i{display:block;height:100%;background:#159678}
+.truncate{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hidden,[hidden]{display:none!important}
+#invitationArea{border:1px solid #bad8cd;background:#f4faf6;border-radius:11px;padding:13px;margin-top:10px}
+#invitationLink{width:100%;font-size:13px}footer{color:var(--muted);text-align:center;font-size:12px;padding:10px}
+@media(max-width:600px){.panel{padding:15px}.scroll{margin:0 -6px}.bar>button{flex-shrink:0}td,th{padding:9px 5px;font-size:13px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+<div class="bar"><div><small style="color:#b8ded0">HOGARSTOCK · V3 DE DESARROLLO</small><h1>Administración del hogar</h1><p style="margin:0;color:#dbede6">Inventario, compras y seguimiento en un solo lugar.</p></div>
+<button id="logout" class="secondary" hidden type="button">Cerrar sesión</button></div>
+</div></header>
+<main>
+<section class="panel" id="loginPanel">
+<h2>Acceso de administrador</h2>
+<p class="muted">Introduce la contraseña configurada para V3. No se guarda en el navegador.</p>
+<form id="loginForm" class="flex">
+<div class="field"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password" required minlength="12"></div>
+<div class="field" style="flex:0;align-self:end"><button type="submit" id="loginButton">Entrar</button></div>
+</form>
+</section>
+<section id="appPanel" hidden>
+<nav aria-label="Secciones administrativas">
+<button type="button" data-tab="resumen" aria-selected="true">Resumen</button>
+<button type="button" data-tab="catalogo" aria-selected="false">Catálogo</button>
+<button type="button" data-tab="compras" aria-selected="false">Compras</button>
+</nav>
+<section class="panel" id="resumen">
+<div class="bar"><h2>Estado general</h2><button id="refreshAll" class="secondary">Actualizar datos</button></div>
+<div class="flex">
+<div class="stat"><span class="muted">Productos en catálogo</span><div id="statProductos" class="big">—</div></div>
+<div class="stat"><span class="muted">Productos que faltan</span><div id="statFaltan" class="big">—</div></div>
+<div class="stat"><span class="muted">Compras abiertas (últimas 40)</span><div id="statCompras" class="big">—</div></div>
+</div>
+<p class="muted">Los productos se administran desde el catálogo. Las compras tienen estados independientes y no modifican automáticamente el inventario al finalizar.</p>
+</section>
+<section class="panel" id="catalogo" hidden>
+<div class="bar"><h2>Catálogo</h2><span class="pill">Sin borrado de productos</span></div>
+<form id="newProduct" class="flex" style="margin-bottom:16px">
+<div class="field"><label for="newName">Producto nuevo</label><input id="newName" maxlength="120" required placeholder="Nombre"></div>
+<div class="field"><label for="newCategory">Categoría</label><input id="newCategory" maxlength="70" required placeholder="Categoría"></div>
+<div class="field" style="flex:0;align-self:end"><button type="submit">Añadir</button></div>
+</form>
+<div class="flex" style="margin-bottom:8px"><input id="filterProducts" class="grow" type="search" placeholder="Buscar producto o categoría" aria-label="Buscar productos">
+<select id="filterMissing" aria-label="Filtrar por necesidad"><option value="todos">Todos</option><option value="faltan">Solo faltantes</option><option value="disponibles">Solo disponibles</option></select></div>
+<div class="scroll"><table><thead><tr><th>Falta</th><th>Producto</th><th>Categoría</th><th>Acción</th></tr></thead><tbody id="productRows"></tbody></table></div>
+<p id="productCount" class="muted"></p>
+</section>
+<section class="panel" id="compras" hidden>
+<div class="bar"><h2>Compras</h2><button class="secondary" id="refreshPurchases" type="button">Actualizar</button></div>
+<h3>Crear una compra</h3>
+<p class="muted">Selecciona productos que figuran como faltantes. Cada compra conservará una copia de los nombres y cantidades.</p>
+<div class="flex"><input id="searchForPurchase" type="search" class="grow" placeholder="Filtrar productos faltantes">
+<button id="clearSelection" class="secondary">Limpiar selección</button></div>
+<div id="missingSelection" style="max-height:230px;overflow:auto;margin:12px 0"></div>
+<div class="bar"><span id="selectedCount" class="pill">0 seleccionados</span><button id="createPurchase" type="button">Crear compra</button></div>
+<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">
+<div class="bar"><h3>Últimas compras</h3><span class="muted">Hasta 40, de más reciente a antigua</span></div>
+<div class="scroll"><table><thead><tr><th>Compra</th><th>Estado</th><th>Progreso</th><th></th></tr></thead><tbody id="purchaseRows"></tbody></table></div>
+<section id="detail" class="panel" hidden style="margin-top:14px;background:#fbfdfc">
+<div class="bar"><h3 id="detailTitle">Compra</h3><button id="closeDetail" type="button" class="secondary">Cerrar vista</button></div>
+<div id="detailBody"></div>
+<div class="bar" style="margin-top:15px"><button id="createInvitation" type="button">Crear invitación</button><button id="showReconciliation" class="secondary" type="button">Ver conciliación</button></div>
+<div id="invitationArea" hidden>
+<label for="invitationLink">Enlace privado para compartir (uso único)</label>
+<input id="invitationLink" type="text" readonly autocomplete="off">
+<div class="flex" style="margin-top:10px"><button id="copyInvitation" type="button">Copiar enlace</button><button id="openWhatsApp" class="secondary" type="button">Preparar mensaje en WhatsApp</button><button id="hideInvitation" type="button" class="secondary">Ocultar enlace</button></div>
+<p class="muted">Copiar o abrir WhatsApp no envía el mensaje. En WhatsApp tendrás que confirmar su envío. Si el destinatario activa el enlace, no podrá volver a utilizarse para abrir una segunda sesión.</p>
+</div>
+<div id="reconciliation" hidden></div>
+</section>
+</section>
+</section>
+<section class="panel"><p id="status" role="status" aria-live="polite">Verificando sesión…</p></section>
+<footer>Versión V3 en desarrollo. No conectada a Render, Turso remoto ni WhatsApp automático de producción.</footer>
+</main>
+<script>
+"use strict";
+(() => {
+const $ = (id) => document.getElementById(id);
+const state = {productos:[],compras:[],selected:new Set(),compraId:null,compraDetalle:null,link:"",busy:false};
+function status(texto,error=false) {const nodo=$("status");nodo.textContent=texto;nodo.className=error?"error":"ok";}
+function node(tag, contenido, clase) {const n=document.createElement(tag);if(contenido!==undefined)n.textContent=String(contenido);if(clase)n.className=clase;return n;}
+function button(texto,evento,clase="secondary"){const b=node("button",texto);b.type="button";b.className=clase;b.addEventListener("click",evento);return b;}
+async function api(ruta,metodo="GET",body) {
+  const opciones={method:metodo,credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}};
+  if(body!==undefined){opciones.headers["Content-Type"]="application/json";opciones.body=JSON.stringify(body);}
+  const response=await fetch("/api/v3"+ruta,opciones);
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok){const error=new Error(data.error||"ERROR_HTTP_"+response.status);error.status=response.status;throw error;}
+  return data;
+}
+function unauthorized(error) {if(error && error.status===401){showApp(false);status("Tu sesión ha caducado. Inicia sesión de nuevo.",true);return true;}return false;}
+async function run(tarea){if(state.busy)return;state.busy=true;try{await tarea();}catch(e){if(!unauthorized(e))status("Operación no completada: "+e.message,true);}finally{state.busy=false;}}
+function showApp(valid){$("loginPanel").hidden=valid;$("appPanel").hidden=!valid;$("logout").hidden=!valid;}
+function setTab(tab){
+for(const id of ["resumen","catalogo","compras"])$(id).hidden=id!==tab;
+document.querySelectorAll("nav [data-tab]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab)));
+}
+document.querySelectorAll("nav [data-tab]").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
+async function cargar() {
+const [productos,compras]=await Promise.all([api("/admin/productos"),api("/admin/compras")]);
+state.productos=productos.productos;state.compras=compras.compras;
+$("statProductos").textContent=state.productos.length;
+$("statFaltan").textContent=state.productos.filter(p=>p.agotado).length;
+$("statCompras").textContent=state.compras.filter(c=>c.estado==="abierta").length;
+renderProductos();renderSeleccion();renderCompras();
+}
+async function login(password){
+await api("/auth/login","POST",{contrasena:password});
+showApp(true);await cargar();status("Sesión administrativa iniciada.");
+}
+$("loginForm").addEventListener("submit",e=>{e.preventDefault();const clave=$("password").value;$("password").value="";run(()=>login(clave));});
+$("logout").addEventListener("click",()=>run(async()=>{
+await api("/auth/logout","POST",{});state.link="";state.selected.clear();showApp(false);status("Sesión cerrada.");}));
+$("refreshAll").addEventListener("click",()=>run(async()=>{await cargar();status("Datos actualizados.");}));
+function renderProductos(){
+const filtro=$("filterProducts").value.trim().toLocaleLowerCase();
+const modo=$("filterMissing").value;
+const filtrados=state.productos.filter(p=>(p.nombre+" "+p.categoria).toLocaleLowerCase().includes(filtro)&&(modo==="todos"||(modo==="faltan"?p.agotado:!p.agotado)));
+const cuerpo=$("productRows");cuerpo.replaceChildren();
+for(const p of filtrados){
+const tr=node("tr"),check=node("input");check.type="checkbox";check.checked=p.agotado;
+check.setAttribute("aria-label","Falta "+p.nombre);
+check.addEventListener("change",()=>run(async()=>{
+const actual=check.checked?1:0,esperado=p.agotado?1:0;
+try{await api("/admin/productos/"+p.id+"/necesidad","PATCH",{agotado:actual,agotadoEsperado:esperado});await cargar();status("Necesidad actualizada: "+p.nombre);}
+catch(e){check.checked=p.agotado;throw e;}
+}));
+const nombre=node("strong",p.nombre),categoria=node("span",p.categoria);
+const td1=node("td"),td2=node("td"),td3=node("td"),td4=node("td");
+td1.append(check);td2.append(nombre);td3.append(categoria);
+td4.append(button("Editar",()=>editarProducto(p)));
+tr.append(td1,td2,td3,td4);cuerpo.append(tr);
+}
+$("productCount").textContent=filtrados.length+" productos visibles";
+}
+function editarProducto(p){
+const nombre=prompt("Nombre del producto",p.nombre);if(nombre===null)return;
+const categoria=prompt("Categoría",p.categoria);if(categoria===null)return;
+run(async()=>{await api("/admin/productos/"+p.id,"PUT",{nombre,categoria});await cargar();status("Producto actualizado.");});
+}
+$("filterProducts").addEventListener("input",renderProductos);
+$("filterMissing").addEventListener("change",renderProductos);
+$("newProduct").addEventListener("submit",e=>{e.preventDefault();const nombre=$("newName").value,categoria=$("newCategory").value;run(async()=>{
+await api("/admin/productos","POST",{nombre,categoria});$("newProduct").reset();await cargar();status("Producto añadido al catálogo.");
+});});
+function renderSeleccion(){
+const disponibles=state.productos.filter(p=>p.agotado);
+const validos=new Set(disponibles.map(p=>p.id));
+for(const id of state.selected)if(!validos.has(id))state.selected.delete(id);
+const busqueda=$("searchForPurchase").value.trim().toLocaleLowerCase();
+const contenedor=$("missingSelection");contenedor.replaceChildren();
+for(const p of disponibles.filter(p=>(p.nombre+" "+p.categoria).toLocaleLowerCase().includes(busqueda))){
+const fila=node("label",undefined,"product");
+const check=node("input");check.type="checkbox";check.checked=state.selected.has(p.id);
+check.addEventListener("change",()=>{if(check.checked)state.selected.add(p.id);else state.selected.delete(p.id);updateSelected();});
+const contenido=node("span",undefined,"product-name");contenido.append(node("strong",p.nombre),node("small",p.categoria));
+fila.append(check,contenido);contenedor.append(fila);
+}
+if(!disponibles.length)contenedor.append(node("p","No hay productos marcados como faltantes.","muted"));
+updateSelected();
+}
+function updateSelected(){$("selectedCount").textContent=state.selected.size+" seleccionados";$("createPurchase").disabled=state.selected.size===0;}
+$("searchForPurchase").addEventListener("input",renderSeleccion);
+$("clearSelection").addEventListener("click",()=>{state.selected.clear();renderSeleccion();});
+$("createPurchase").addEventListener("click",()=>run(async()=>{
+if(!state.selected.size)return;
+const lineas=[...state.selected].map(productoId=>({productoId,cantidad:1}));
+const creada=await api("/admin/compras","POST",{lineas});
+state.selected.clear();await cargar();setTab("compras");await mostrarCompra(creada.compra.compraId);
+status("Compra #"+creada.compra.compraId+" creada. Ya puedes generar una invitación.");
+}));
+function renderCompras(){
+const tbody=$("purchaseRows");tbody.replaceChildren();
+for(const c of state.compras){
+const tr=node("tr"),td1=node("td"),td2=node("td"),td3=node("td"),td4=node("td");
+td1.append(node("strong","#"+c.id));td2.append(node("span",c.estado,"pill"));
+td3.append(node("span",c.comprados+" / "+c.total));
+td4.append(button("Ver",()=>run(()=>mostrarCompra(c.id))));
+tr.append(td1,td2,td3,td4);tbody.append(tr);
+}
+if(!state.compras.length){const tr=node("tr"),td=node("td","No hay compras creadas aún.");td.colSpan=4;tr.append(td);tbody.append(tr);}
+}
+$("refreshPurchases").addEventListener("click",()=>run(async()=>{await cargar();status("Compras actualizadas.");}));
+function ocultarInvitacion(){state.link="";$("invitationLink").value="";$("invitationArea").hidden=true;}
+async function mostrarCompra(id){
+ocultarInvitacion();$("reconciliation").replaceChildren();$("reconciliation").hidden=true;
+const data=await api("/admin/compras/"+id);state.compraId=id;state.compraDetalle=data.compra;
+$("detail").hidden=false;$("detailTitle").textContent="Compra #"+id+" · "+data.compra.estado;
+const area=$("detailBody");area.replaceChildren();
+const progress=node("p",data.compra.resumen.comprados+" comprados · "+data.compra.resumen.pendientes+" pendientes · "+data.compra.resumen.noDisponibles+" no disponibles","muted");area.append(progress);
+for(const item of data.compra.items){
+const fila=node("div",undefined,"product");
+const info=node("div",undefined,"product-name");info.append(node("strong",item.nombre),node("small",item.cantidad+" "+(item.unidad||"unidad(es)")+" · "+item.categoria));
+fila.append(info,node("span",item.estado,"pill"));area.append(fila);
+}
+$("createInvitation").disabled=data.compra.estado!=="abierta";$("showReconciliation").disabled=data.compra.estado!=="finalizada";
+}
+$("closeDetail").addEventListener("click",()=>{$("detail").hidden=true;ocultarInvitacion();state.compraId=null;state.compraDetalle=null;});
+$("createInvitation").addEventListener("click",()=>run(async()=>{
+if(!state.compraId||state.compraDetalle?.estado!=="abierta")return;
+if(!confirm("¿Crear un enlace de un solo uso? Será visible únicamente hasta que lo ocultes o cambies de pantalla."))return;
+ocultarInvitacion();
+const datos=await api("/admin/compras/"+state.compraId+"/invitaciones","POST",{});
+state.link=location.origin+"/comprador-v3.html?compra="+state.compraId+"#invitacion="+datos.invitacion.token;
+$("invitationLink").value=state.link;$("invitationArea").hidden=false;
+status("Invitación creada: todavía no se ha enviado.");
+}));
+$("copyInvitation").addEventListener("click",()=>run(async()=>{
+if(!state.link)return;await navigator.clipboard.writeText(state.link);status("Enlace copiado. Compártelo solo con el comprador.");
+}));
+$("openWhatsApp").addEventListener("click",()=>{
+if(!state.link)return;
+const texto="Tu lista de compra de HogarStock: "+state.link;
+const url="https://api.whatsapp.com/send?text="+encodeURIComponent(texto);
+window.open(url,"_blank","noopener,noreferrer");
+status("Se ha preparado el mensaje en WhatsApp; confirma allí su envío.");
+});
+$("hideInvitation").addEventListener("click",()=>{ocultarInvitacion();status("Enlace ocultado de la pantalla. La invitación sigue vigente hasta su consumo o caducidad.");});
+$("showReconciliation").addEventListener("click",()=>run(async()=>{
+if(!state.compraId)return;
+const datos=await api("/admin/compras/"+state.compraId+"/conciliacion");
+const contenedor=$("reconciliation");contenedor.replaceChildren();contenedor.hidden=false;
+contenedor.append(node("h3","Informe de conciliación (solo lectura)"));
+for(const linea of datos.informe.lineas){
+const fila=node("div",undefined,"product");
+const informacion=node("div",undefined,"product-name");informacion.append(node("strong",linea.nombreEnCompra),node("small",linea.codigo+" · "+linea.accionSugerida));fila.append(informacion);contenedor.append(fila);
+}
+status("Informe consultado. No se ha modificado el inventario.");
+}));
+(async()=>{try{const sesion=await api("/admin/sesion");if(sesion.autenticado){showApp(true);await cargar();status("Sesión recuperada.");}else{showApp(false);status("Acceso administrativo requerido.");}}catch(e){showApp(false);status("Inicia sesión para continuar.");}})();
+})();
+</script>
+</body>
+</html>
