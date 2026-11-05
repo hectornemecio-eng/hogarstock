@@ -48,6 +48,8 @@ jobs:
           node --check catalogo/store.js
           node --check tests/catalogo.test.js
           node --check tests/admin-v3.test.js
+          node --check integration/v3-sandbox-server.js
+          node --check tests/v3-browser-e2e.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
@@ -73,3 +75,26 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
         run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js
+
+      - name: Preparar navegador Chromium exclusivamente para E2E local
+        run: |
+          npm install --prefix "$RUNNER_TEMP/hogarstock-libsql-test" --no-save --package-lock=false --ignore-scripts @libsql/client@0.14.0 express@4.21.2 playwright@1.56.1
+          "$RUNNER_TEMP/hogarstock-libsql-test/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Crear certificado TLS efimero para loopback
+        run: |
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes \
+            -keyout "$RUNNER_TEMP/hogarstock-test.key" \
+            -out "$RUNNER_TEMP/hogarstock-test.crt" \
+            -days 1 \
+            -subj "/CN=127.0.0.1" \
+            -addext "subjectAltName=IP:127.0.0.1"
+          chmod 600 "$RUNNER_TEMP/hogarstock-test.key"
+
+      - name: Recorrido completo en Chromium HTTPS local
+        env:
+          NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
+          HOGARSTOCK_V3_SANDBOX: "1"
+          HOGARSTOCK_SANDBOX_CERT: ${{ runner.temp }}/hogarstock-test.crt
+          HOGARSTOCK_SANDBOX_KEY: ${{ runner.temp }}/hogarstock-test.key
+        run: node --test tests/v3-browser-e2e.test.js
