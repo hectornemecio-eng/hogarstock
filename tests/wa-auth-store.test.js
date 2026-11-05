@@ -135,3 +135,24 @@ test("No se guardan secretos ni datos cifrados en logs de error",async(t)=>{
  }
  assert.ok(datos.rows.length===1);
 });
+
+test("Claves con identificadores reservados no alteran prototipos",async(t)=>{
+ const e=await fixture(t),a=await abrir(e.cliente);
+ await a.state.keys.set({session:{"__proto__":{safe:true}, "constructor":{safe:"ok"}}});
+ const resultado=await a.state.keys.get("session",["__proto__","constructor"]);
+ assert.equal(Object.getPrototypeOf(resultado),null);
+ assert.equal(Object.hasOwn(resultado,"__proto__"),true);
+ assert.equal(resultado.constructor.safe,"ok");
+ assert.equal({}.safe,undefined);
+});
+test("Escrituras Signal concurrentes conservan orden de solicitud",async(t)=>{
+ const e=await fixture(t),a=await abrir(e.cliente);
+ const p1=a.state.keys.set({session:{"orden":{n:1}}});
+ const p2=a.state.keys.set({session:{"orden":{n:2}}});
+ const p3=a.state.keys.set({session:{"orden":{n:3}}});
+ await Promise.all([p1,p2,p3]);
+ const valores=await a.state.keys.get("session",["orden"]);
+ assert.equal(valores.orden.n,3);
+ const reinicio=await abrir(e.nuevaConexion());
+ assert.equal((await reinicio.state.keys.get("session",["orden"])).orden.n,3);
+});
