@@ -59,7 +59,7 @@ function crearSesionesComprador({ cliente, reloj = Date.now }) {
     const mapa = new Map(resultado.rows.map((r) => [String(r.name), r]));
     if (!mapa.size) return false;
     const faltan = requeridas.filter((r) => !mapa.has(r));
-    if (faltan.length || Number(mapa.get("huella")?.pk) !== (nombre === TABLA ? 1 : Number(mapa.get("huella")?.pk))) {
+    if (faltan.length || Number(mapa.get("huella")?.pk) !== 1) {
       throw new Error("ESQUEMA_SESIONES_COMPRADOR_INCOMPATIBLE:" + nombre);
     }
     return true;
