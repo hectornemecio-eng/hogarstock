@@ -54,7 +54,7 @@ function validarOrigenConfigurado(origen) {
   return origen;
 }
 
-function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, origen, reloj = Date.now }) {
+function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, bandejaWhatsApp = null, origen, reloj = Date.now }) {
   const requerido = [
     [acceso, ["iniciarSesionAdmin", "autorizarAdmin", "cerrarSesionAdmin",
       "emitirPermisoCompra", "autorizarCompra"]],
@@ -72,6 +72,10 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
   if (catalogo && ["listarProductos", "agregarProducto", "editarProducto", "cambiarNecesidad"].some(
     (nombre) => typeof catalogo[nombre] !== "function")) {
     throw new TypeError("Servicio de catalogo incompleto");
+  }
+  if (bandejaWhatsApp && ["listarPorCompra", "revisar"].some(
+    nombre => typeof bandejaWhatsApp[nombre] !== "function")) {
+    throw new TypeError("Bandeja WhatsApp incompleta");
   }
   validarOrigenConfigurado(origen);
   if (typeof reloj !== "function") throw new TypeError("Reloj invalido");
@@ -294,6 +298,32 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
       return res.status(201).json({ compra: resultado });
     })
   );
+
+  if (bandejaWhatsApp) {
+    router.get("/admin/compras/:compraId/respuestas", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const compraId = enteroPositivo(req.params.compraId);
+        if (compraId === null) return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
+        const compra = await compras.obtenerCompra({ compraId });
+        if (!compra) return res.status(404).json({ error: "COMPRA_NO_ENCONTRADA" });
+        return res.json({ respuestas: await bandejaWhatsApp.listarPorCompra({ compraId, limite: 50 }) });
+      })
+    );
+    router.post("/admin/compras/:compraId/respuestas/:respuestaId/revisar", exigirAdmin,
+      (req, res) => ejecutar(req, res, async () => {
+        const compraId = enteroPositivo(req.params.compraId);
+        if (compraId === null) return res.status(400).json({ error: "ID_COMPRA_INVALIDO" });
+        if (!req.body || !["revisada", "descartada"].includes(req.body.decision)) {
+          return res.status(400).json({ error: "DECISION_INVALIDA" });
+        }
+        const resultado = await bandejaWhatsApp.revisar({
+          compraId, id: req.params.respuestaId, decision: req.body.decision,
+        });
+        if (!resultado.actualizado) return res.status(409).json({ error: "RESPUESTA_NO_PENDIENTE_O_AJENA" });
+        return res.json({ actualizado: true, aplicadaAlInventario: false });
+      })
+    );
+  }
 
   router.get("/admin/compras/:compraId", exigirAdmin, (req, res) =>
     ejecutar(req, res, async () => {
