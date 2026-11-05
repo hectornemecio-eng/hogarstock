@@ -50,6 +50,7 @@ jobs:
           node --check tests/admin-v3.test.js
           node --check integration/v3-sandbox-server.js
           node --check tests/v3-browser-e2e.test.js
+          node --check tests/v3-boundary.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
@@ -97,4 +98,4 @@ jobs:
           HOGARSTOCK_V3_SANDBOX: "1"
           HOGARSTOCK_SANDBOX_CERT: ${{ runner.temp }}/hogarstock-test.crt
           HOGARSTOCK_SANDBOX_KEY: ${{ runner.temp }}/hogarstock-test.key
-        run: node --test tests/v3-browser-e2e.test.js
+        run: node --test tests/v3-browser-e2e.test.js tests/v3-boundary.test.js
