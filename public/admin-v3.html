@@ -84,7 +84,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);
 <section id="detail" class="panel" hidden style="margin-top:14px;background:#fbfdfc">
 <div class="bar"><h3 id="detailTitle">Compra</h3><button id="closeDetail" type="button" class="secondary">Cerrar vista</button></div>
 <div id="detailBody"></div>
-<div class="bar" style="margin-top:15px"><button id="createInvitation" type="button">Crear invitación</button><button id="showReconciliation" class="secondary" type="button">Ver conciliación</button></div>
+<div class="bar" style="margin-top:15px"><button id="createInvitation" type="button">Crear invitación</button><button id="showReconciliation" class="secondary" type="button">Ver conciliación</button><button id="showResponses" class="secondary" type="button">Respuestas WhatsApp</button></div>
 <div id="invitationArea" hidden>
 <label for="invitationLink">Enlace privado para compartir (uso único)</label>
 <input id="invitationLink" type="text" readonly autocomplete="off">
@@ -92,6 +92,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);
 <p class="muted">Copiar o abrir WhatsApp no envía el mensaje. En WhatsApp tendrás que confirmar su envío. Si el destinatario activa el enlace, no podrá volver a utilizarse para abrir una segunda sesión.</p>
 </div>
 <div id="reconciliation" hidden></div>
+<div id="responses" hidden></div>
 </section>
 </section>
 </section>
@@ -210,6 +211,7 @@ $("refreshPurchases").addEventListener("click",()=>run(async()=>{await cargar();
 function ocultarInvitacion(){state.link="";$("invitationLink").value="";$("invitationArea").hidden=true;}
 async function mostrarCompra(id){
 ocultarInvitacion();$("reconciliation").replaceChildren();$("reconciliation").hidden=true;
+$("responses").replaceChildren();$("responses").hidden=true;
 const data=await api("/admin/compras/"+id);state.compraId=id;state.compraDetalle=data.compra;
 $("detail").hidden=false;$("detailTitle").textContent="Compra #"+id+" · "+data.compra.estado;
 const area=$("detailBody");area.replaceChildren();
@@ -242,6 +244,32 @@ window.open(url,"_blank","noopener,noreferrer");
 status("Se ha preparado el mensaje en WhatsApp; confirma allí su envío.");
 });
 $("hideInvitation").addEventListener("click",()=>{ocultarInvitacion();status("Enlace ocultado de la pantalla. La invitación sigue vigente hasta su consumo o caducidad.");});
+async function mostrarRespuestas(){
+if(!state.compraId)return;
+const compraId=state.compraId;
+const datos=await api("/admin/compras/"+compraId+"/respuestas");
+const area=$("responses");area.replaceChildren();area.hidden=false;
+area.append(node("h3","Respuestas WhatsApp — revisión administrativa"));
+area.append(node("p","La revisión solamente clasifica respuestas; no modifica la lista de compra ni el inventario.","muted"));
+if(!datos.respuestas.length){area.append(node("p","Todavía no hay respuestas registradas para esta compra.","muted"));return;}
+for(const respuesta of datos.respuestas){
+const fila=node("div",undefined,"product");
+const info=node("div",undefined,"product-name");
+info.append(node("strong",respuesta.accion?respuesta.accion+" · artículo #"+respuesta.itemId:respuesta.estado));
+info.append(node("small","Estado: "+respuesta.estado));
+fila.append(info);
+if(["pendiente_revision","no_interpretable","ambigua"].includes(respuesta.estado)){
+  for(const [decision,texto] of [["revisada","Marcar revisada"],["descartada","Descartar"]]){
+    fila.append(button(texto,()=>run(async()=>{
+      await api("/admin/compras/"+compraId+"/respuestas/"+encodeURIComponent(respuesta.id)+"/revisar","POST",{decision});
+      await mostrarRespuestas();status("Respuesta "+decision+". No se ha modificado el inventario.");
+    }),"secondary"));
+  }
+}
+area.append(fila);
+}
+}
+$("showResponses").addEventListener("click",()=>run(async()=>{await mostrarRespuestas();status("Respuestas consultadas.");}));
 $("showReconciliation").addEventListener("click",()=>run(async()=>{
 if(!state.compraId)return;
 const datos=await api("/admin/compras/"+state.compraId+"/conciliacion");
