@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>Mi compra · HogarStock V3 (pruebas)</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+      --tinta:#16332e; --verde:#157d65; --fondo:#f4f8f6; --borde:#d5e4de; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--fondo); color:var(--tinta); }
+    header { background:linear-gradient(120deg,#123a31,#217d64); color:white; padding:24px 18px 56px; }
+    .ancho { max-width:760px; margin:auto; }
+    header h1 { margin:6px 0 4px; font-size:clamp(24px,4vw,33px); }
+    header p { margin:0; opacity:.85; }
+    main { padding:0 18px 32px; margin-top:-33px; }
+    section { background:white; padding:21px; border-radius:16px; margin-bottom:17px; box-shadow:0 6px 25px #10392b10; }
+    .fila { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .muted { color:#5a6f69; }
+    .etiqueta { font-size:12px; text-transform:uppercase; font-weight:700; letter-spacing:.07em; }
+    .grande { font-size:22px; font-weight:750; }
+    .progreso { height:11px; border-radius:12px; background:#e6efeb; overflow:hidden; margin:15px 0 12px; }
+    .barra { background:#19a27e; height:100%; width:0%; transition:width .2s; }
+    ul { list-style:none; padding:0; margin:15px 0 4px; }
+    li { border-top:1px solid var(--borde); padding:15px 0; display:flex; align-items:center; gap:12px; }
+    li:first-child { border-top:0; }
+    li > .contenido { flex:1; min-width:0; }
+    li strong { display:block; font-size:16px; }
+    li small { color:#60766f; }
+    .estado { border:1px solid var(--borde); border-radius:9px; font:inherit; padding:9px; width:154px;
+      background:white; color:var(--tinta); max-width:45%; }
+    .estado:focus-visible,button:focus-visible { outline:3px solid #ffbd59; outline-offset:2px; }
+    button { appearance:none; border:0; border-radius:10px; background:var(--verde); color:white;
+      font:inherit; font-weight:650; cursor:pointer; padding:13px 17px; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    button.secundario { background:#e9f3ef; color:#245349; }
+    #mensaje { font-weight:600; min-height:20px; }
+    #mensaje.error { color:#a22828; }
+    [hidden] { display:none!important; }
+    footer { text-align:center; color:#597268; padding:13px; font-size:12px; }
+  </style>
+</head>
+<body>
+<header><div class="ancho">
+  <div class="etiqueta">HogarStock · Área de comprador</div>
+  <h1>Tu lista de compra</h1>
+  <p>Actualiza lo que has comprado sin afectar otras compras.</p>
+</div></header>
+<main class="ancho">
+  <section aria-live="polite">
+    <div class="fila"><span class="etiqueta">Estado de la compra</span><strong id="estadoGlobal">Conectando…</strong></div>
+    <div class="fila" style="margin-top:11px"><div><span class="grande" id="contador">—</span><div class="muted">Productos comprados</div></div>
+      <button class="secundario" id="recargar" type="button">Actualizar</button></div>
+    <div class="progreso" role="progressbar" aria-label="Productos comprados" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progreso"><div class="barra" id="barra"></div></div>
+    <p class="muted" id="resumen">Verificando acceso…</p>
+    <p id="mensaje" role="status" aria-live="polite"></p>
+  </section>
+  <section>
+    <div class="fila"><h2 style="margin:0">Productos</h2><span class="muted" id="total">—</span></div>
+    <ul id="lista" aria-label="Productos de la compra"></ul>
+  </section>
+  <section>
+    <div class="fila"><div><h2 style="margin:0 0 5px">Terminar compra</h2>
+      <span class="muted">Puedes finalizar aunque queden productos pendientes.</span></div>
+      <button id="finalizar" type="button" disabled>Finalizar</button></div>
+    <div class="fila" style="margin-top:16px"><span class="muted">Sesión vinculada únicamente a esta compra.</span>
+      <button class="secundario" id="salir" type="button">Cerrar acceso</button></div>
+  </section>
+</main>
+<footer>HogarStock V3 · Versión de desarrollo · No disponible en producción</footer>
+<script>
+"use strict";
+(() => {
+  const id = new URLSearchParams(location.search).get("compra");
+  const fragmento = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const invitacion = fragmento.get("invitacion");
+  // El fragmento no viaja al servidor; eliminamos la credencial del historial
+  // antes de efectuar solicitudes de red, incluso si el canje falla.
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  const valido = /^[1-9][0-9]{0,15}$/.test(id || "") && Number.isSafeInteger(Number(id));
+  const base = "/api/v3/compras/" + encodeURIComponent(id || "0");
+  const $ = (selector) => document.getElementById(selector);
+  let compra = null;
+  let ocupada = false;
+
+  function mensaje(texto, error = false) {
+    $("mensaje").textContent = texto;
+    $("mensaje").classList.toggle("error", error);
+  }
+  async function peticion(ruta, metodo = "GET", datos) {
+    const opciones = {
+      method: metodo,
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" },
+      cache: "no-store",
+    };
+    if (datos !== undefined) {
+      opciones.headers["Content-Type"] = "application/json";
+      opciones.body = JSON.stringify(datos);
+    }
+    const respuesta = await fetch(ruta, opciones);
+    let cuerpo;
+    try { cuerpo = await respuesta.json(); } catch (_) { cuerpo = {}; }
+    if (!respuesta.ok) {
+      const err = new Error(cuerpo.error || "ERROR_HTTP_" + respuesta.status);
+      err.status = respuesta.status;
+      throw err;
+    }
+    return cuerpo;
+  }
+  async function activar() {
+    if (!invitacion) return;
+    if (!/^[A-Za-z0-9_-]{43}$/.test(invitacion)) {
+      throw new Error("INVITACION_INVALIDA");
+    }
+    await peticion(base + "/activar", "POST", { invitacion });
+  }
+  function textoSeguro(tag, texto, clase) {
+    const el = document.createElement(tag);
+    el.textContent = String(texto);
+    if (clase) el.className = clase;
+    return el;
+  }
+  function renderizar() {
+    if (!compra) return;
+    const cerrado = compra.estado !== "abierta";
+    $("estadoGlobal").textContent = cerrado ? "Finalizada" : "En curso";
+    $("contador").textContent = compra.resumen.comprados + " / " + compra.resumen.total;
+    $("resumen").textContent = compra.resumen.pendientes + " pendientes · " +
+      compra.resumen.noDisponibles + " no disponibles";
+    $("total").textContent = compra.items.length + " productos";
+    const porcentaje = compra.resumen.total ? Math.round(100 * compra.resumen.comprados / compra.resumen.total) : 0;
+    $("barra").style.width = porcentaje + "%";
+    $("progreso").setAttribute("aria-valuenow", String(porcentaje));
+    $("finalizar").disabled = cerrado || ocupada;
+    const lista = $("lista");
+    lista.replaceChildren();
+    for (const item of compra.items) {
+      const li = document.createElement("li");
+      const contenido = textoSeguro("div", "", "contenido");
+      contenido.append(textoSeguro("strong", item.nombre));
+      contenido.append(textoSeguro("small", item.categoria + " · " + item.cantidad + " " + (item.unidad || "unidad(es)")));
+      const select = document.createElement("select");
+      select.className = "estado";
+      select.setAttribute("aria-label", "Estado de " + item.nombre);
+      for (const [valor, texto] of [
+        ["pendiente", "Pendiente"],
+        ["comprado", "Comprado"],
+        ["no_disponible", "No disponible"],
+      ]) {
+        const opcion = document.createElement("option");
+        opcion.value = valor;
+        opcion.textContent = texto;
+        select.append(opcion);
+      }
+      select.value = item.estado;
+      select.disabled = cerrado || ocupada;
+      select.addEventListener("change", async () => {
+        const estadoAnterior = item.estado;
+        select.disabled = true;
+        mensaje("Guardando…");
+        try {
+          await peticion(base + "/items/" + item.id, "PATCH", {
+            estado: select.value,
+            revisionEsperada: item.revision,
+          });
+          await cargar();
+          mensaje("Cambio guardado.");
+        } catch (error) {
+          select.value = estadoAnterior;
+          mensaje(error.message === "CONFLICTO_VERSION"
+            ? "La lista cambió en otro dispositivo. Actualiza antes de continuar."
+            : "No se pudo guardar: " + error.message, true);
+          await cargar().catch(() => {});
+        } finally {
+          select.disabled = cerrado || ocupada;
+        }
+      });
+      li.append(contenido, select);
+      lista.append(li);
+    }
+  }
+  async function cargar() {
+    const respuesta = await peticion(base);
+    compra = respuesta.compra;
+    renderizar();
+  }
+  $("recargar").addEventListener("click", async () => {
+    try { await cargar(); mensaje("Lista actualizada."); }
+    catch (error) { mensaje("Error al actualizar: " + error.message, true); }
+  });
+  $("finalizar").addEventListener("click", async () => {
+    if (!compra || compra.estado !== "abierta" || ocupada) return;
+    if (!confirm("¿Finalizar esta compra? Después no podrás modificar sus productos.")) return;
+    ocupada = true;
+    $("finalizar").disabled = true;
+    try {
+      const respuesta = await peticion(base + "/finalizar", "POST", {});
+      await cargar();
+      mensaje(respuesta.resultado.yaFinalizada ? "La compra ya estaba finalizada." : "Compra finalizada y registrada.");
+    } catch (error) { mensaje("No se pudo finalizar: " + error.message, true); }
+    finally { ocupada = false; renderizar(); }
+  });
+  $("salir").addEventListener("click", async () => {
+    try { await peticion(base + "/salir", "POST", {}); compra = null; $("lista").replaceChildren(); mensaje("Acceso cerrado."); $("finalizar").disabled = true; }
+    catch (error) { mensaje("No se pudo cerrar acceso: " + error.message, true); }
+  });
+  (async () => {
+    if (!valido) { mensaje("Enlace inválido: falta el identificador de compra.", true); return; }
+    try {
+      await activar();
+      await cargar();
+      mensaje("Lista disponible.");
+    } catch (error) {
+      mensaje(error.message === "COMPRA_NO_AUTORIZADA" || error.message === "INVITACION_INVALIDA"
+        ? "Enlace no válido, utilizado o caducado. Solicita una invitación nueva."
+        : "No se pudo abrir la compra: " + error.message, true);
+      $("estadoGlobal").textContent = "Acceso no disponible";
+    }
+  })();
+})();
+</script>
+</body>
+</html>
