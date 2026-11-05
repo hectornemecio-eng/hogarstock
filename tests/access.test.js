@@ -34,7 +34,7 @@ test("Contrasenas: scrypt con sal y comparacion exacta", () => {
   assert.equal(verificarContrasena(clave, hash), true);
   assert.equal(verificarContrasena("clave erronea", hash), false);
   assert.equal(verificarContrasena(clave, "hash invalido"), false);
-  assert.throws(() => crearHashContrasena("demasiado corta"), /al menos 12/);
+  assert.throws(() => crearHashContrasena("corta"), /al menos 12/);
 });
 
 test("Sin hash administrador valido: no inicia el servicio", () => {
