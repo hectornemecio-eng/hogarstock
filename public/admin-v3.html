@@ -264,6 +264,22 @@ if(["pendiente_revision","no_interpretable","ambigua"].includes(respuesta.estado
       await api("/admin/compras/"+compraId+"/respuestas/"+encodeURIComponent(respuesta.id)+"/revisar","POST",{decision});
       await mostrarRespuestas();status("Respuesta "+decision+". No se ha modificado el inventario.");
     }),"secondary"));
+    if(respuesta.estado==="pendiente_revision" && respuesta.itemId!=null && respuesta.accion){
+      fila.append(button("Aplicar a compra",()=>run(async()=>{
+        if(!confirm("¿Aplicar la respuesta al artículo de esta compra? Se comprobará la revisión para evitar sobrescribir cambios."))return;
+        const detalle=await api("/admin/compras/"+compraId);
+        const item=detalle.compra.items.find(x=>x.id===respuesta.itemId);
+        if(!item)throw new Error("ARTICULO_NO_DISPONIBLE");
+        const aplicado=await api("/admin/compras/"+compraId+"/respuestas/"+
+          encodeURIComponent(respuesta.id)+"/aplicar","POST",{
+            confirmacion:true,revisionEsperada:item.revision,
+          });
+        await mostrarCompra(compraId);
+        await mostrarRespuestas();
+        status(aplicado.aplicacion.yaAplicada?"La respuesta ya estaba aplicada.":
+          "Respuesta aplicada a la compra. El inventario global no se ha modificado.");
+      }),"secondary"));
+    }
   }
 }
 area.append(fila);
