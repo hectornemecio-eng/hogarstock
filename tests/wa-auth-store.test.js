@@ -138,7 +138,7 @@ test("No se guardan secretos ni datos cifrados en logs de error",async(t)=>{
 
 test("Claves con identificadores reservados no alteran prototipos",async(t)=>{
  const e=await fixture(t),a=await abrir(e.cliente);
- await a.state.keys.set({session:{"__proto__":{safe:true}, "constructor":{safe:"ok"}}});
+ await a.state.keys.set({session:{["__proto__"]:{safe:true}, "constructor":{safe:"ok"}}});
  const resultado=await a.state.keys.get("session",["__proto__","constructor"]);
  assert.equal(Object.getPrototypeOf(resultado),null);
  assert.equal(Object.hasOwn(resultado,"__proto__"),true);
