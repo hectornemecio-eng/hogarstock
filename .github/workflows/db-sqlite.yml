@@ -79,7 +79,7 @@ jobs:
       - name: Preparar navegador Chromium exclusivamente para E2E local
         run: |
           npm install --prefix "$RUNNER_TEMP/hogarstock-libsql-test" --no-save --package-lock=false --ignore-scripts @libsql/client@0.14.0 express@4.21.2 playwright@1.56.1
-          "$RUNNER_TEMP/hogarstock-libsql-test/node_modules/.bin/playwright" install --with-deps chromium
+          "$RUNNER_TEMP/hogarstock-libsql-test/node_modules/.bin/playwright" install chromium
 
       - name: Crear certificado TLS efimero para loopback
         run: |
