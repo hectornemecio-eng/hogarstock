@@ -167,32 +167,38 @@ function crearRegistroWhatsApp({cliente,claveHex,reloj=Date.now}={}){
  }
  async function reclamarEnvio(id){
   exigirInit();operacionValida(id);
-  // Dos conexiones SQLite pueden contender por BEGIN IMMEDIATE. Reintentar
-  // SOLAMENTE SQLITE_BUSY, de forma acotada, sin invocar sendMessage.
-  for(let intento=0;intento<5;intento++){
-   try{return await reclamarEnvioUnaVez(id);}
-   catch(error){
-    if(error?.code!=="SQLITE_BUSY"||intento===4)throw error;
+  // Leer y descifrar ANTES de tocar el estado.
+  // La reserva definitiva es UN UNICO UPDATE atomico sin transaccion larga.
+  // Dos conexiones podran leer, pero solo una cambiara pendiente -> en_envio.
+  for(let intento=0;intento<7;intento++){
+   try{
+    const r=await cliente.execute({
+     sql:"SELECT estado,contenido_cifrado FROM "+TABLA+" WHERE id=? LIMIT 1",
+     args:[id],
+    });
+    if(!r.rows.length)return {adquirido:false,estado:"inexistente"};
+    const fila=r.rows[0];
+    if(fila.estado!=="pendiente")return {
+     adquirido:false,estado:String(fila.estado),
+    };
+    const cifrado=String(fila.contenido_cifrado);
+    const datos=descifrar(id,cifrado),fecha=ahora();
+    const cambio=await cliente.execute({
+     sql:"UPDATE "+TABLA+" SET estado='en_envio',intento_iniciado=?,"+
+      "actualizado=?,revision=revision+1"+
+      " WHERE id=? AND estado='pendiente' AND contenido_cifrado=?",
+     args:[fecha,fecha,id,cifrado],
+    });
+    if(Number(cambio.rowsAffected)===1){
+     return {adquirido:true,id,telefono:datos.telefono,mensaje:datos.mensaje};
+    }
+    // El competidor obtuvo la reserva; JAMAS enviar en esta rama.
+    return {adquirido:false,estado:"reservado_por_otro"};
+   }catch(error){
+    if(error?.code!=="SQLITE_BUSY"||intento===6)throw error;
     await new Promise(resolve=>setTimeout(resolve,10*(intento+1)));
    }
   }
- }
- async function reclamarEnvioUnaVez(id){
-  return escribir(cliente,async tx=>{
-   const r=await tx.execute({sql:"SELECT * FROM "+TABLA+" WHERE id=? LIMIT 1",args:[id]});
-   if(!r.rows.length)return {adquirido:false,estado:"inexistente"};
-   const f=r.rows[0];
-   if(f.estado!=="pendiente")return {adquirido:false,estado:String(f.estado)};
-   // Antes de reclamar, comprobar autenticidad y clave sin alterar el registro.
-   const datos=descifrar(id,String(f.contenido_cifrado)),fecha=ahora();
-   const cambio=await tx.execute({
-    sql:"UPDATE "+TABLA+" SET estado='en_envio',intento_iniciado=?,"+
-     " actualizado=?,revision=revision+1 WHERE id=? AND estado='pendiente'",
-    args:[fecha,fecha,id],
-   });
-   if(Number(cambio.rowsAffected)!==1)throw Error("WA_OUTBOX_CONFLICTO");
-   return {adquirido:true,id,telefono:datos.telefono,mensaje:datos.mensaje};
-  });
  }
  async function registrarResultado({id,estado,codigo=null,proveedorId=null}={}){
   exigirInit();operacionValida(id);
