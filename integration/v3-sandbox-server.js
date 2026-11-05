@@ -62,6 +62,23 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     app.get("/health", (_req, res) => res.status(200).json({
       entorno: "pruebas_aisladas", correcto: true,
     }));
+    // Compatibilidad NEGATIVA: ninguna ruta publica V2 debe seguir activa.
+    // Devolver 410 sin acceder a producto, QR, WhatsApp ni sesiones antiguas.
+    for (const ruta of [
+      "/api/productos",
+      "/api/whatsapp-status",
+      "/api/agotar/:id",
+      "/api/iniciar-compra",
+      "/api/comprado/:id",
+      "/api/finalizar-compra",
+    ]) {
+      app.all(ruta, (_req, res) => res.status(410).json({
+        error: "API_V2_DESHABILITADA",
+      }));
+    }
+    app.all(["/", "/index.html", "/comprador.html"], (_req, res) =>
+      res.status(410).json({ error: "PANTALLA_V2_DESHABILITADA" })
+    );
     app.get("/admin-v3.html", (_req, res) => res.sendFile(
       join(__dirname, "../public/admin-v3.html")
     ));
@@ -76,6 +93,11 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
       servidor.listen(0, "127.0.0.1", resolve);
     });
     const origen = "https://127.0.0.1:" + servidor.address().port;
+    // Este entorno NO habilita WebSockets, ni los heredados ni nuevos.
+    // Cerramos cualquier intento de upgrade antes de la negociacion 101.
+    servidor.on("upgrade", (_req, socket) => {
+      socket.destroy();
+    });
     app.use("/api/v3", crearRouterV3({
       acceso, compras: almacenCompras, catalogo, conciliador,
       sesionesComprador, origen,
