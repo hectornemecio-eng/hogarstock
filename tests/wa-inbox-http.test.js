@@ -8,6 +8,7 @@ const {mkdtempSync,rmSync}=require("node:fs");
 const {join}=require("node:path");
 const {tmpdir}=require("node:os");
 const {crearBandejaWhatsApp}=require("../whatsapp/inbox-store.js");
+const {crearAplicadorWhatsApp}=require("../whatsapp/apply-proposal.js");
 const {crearAlmacenCompras}=require("../compras/store.js");
 const {crearAlmacenSeguridad}=require("../security/store.js");
 const {crearServicioAcceso,crearHashContrasena}=require("../security/access.js");
@@ -30,6 +31,7 @@ async function crearEntorno(t){
   cliente,compras,claveHmacHex:randomBytes(32).toString("hex"),
  });
  await bandeja.init();
+ const aplicador=crearAplicadorWhatsApp({cliente});await aplicador.init();
  await bandeja.vincularRemitente({compraId:c1,telefono:"34600111222"});
  const item=(await compras.obtenerCompra({compraId:c1})).items[0];
  const mensaje=await bandeja.recibir({
@@ -42,7 +44,7 @@ async function crearEntorno(t){
    almacen:seguridad,hashAdministrador:crearHashContrasena(CLAVE),
   }),
   compras,conciliador:crearConciliadorCompras(cliente),
-  bandejaWhatsApp:bandeja,origen:"http://127.0.0.1",
+  bandejaWhatsApp:bandeja,aplicadorWhatsApp:aplicador,origen:"http://127.0.0.1",
  }));
  const servidor=await new Promise((resolve,reject)=>{
   const s=app.listen(0,"127.0.0.1",()=>resolve(s));
@@ -65,7 +67,7 @@ async function crearEntorno(t){
  const login=await req("/auth/login",{method:"POST",body:{contrasena:CLAVE}});
  assert.equal(login.status,200);
  const cookie=login.cookie.split(";")[0];
- return {cliente,compras,bandeja,c1,c2,mensaje,cookie,req};
+ return {cliente,compras,bandeja,aplicador,c1,c2,mensaje,cookie,req};
 }
 test("Consulta respuestas requiere sesión administrativa",async t=>{
  const e=await crearEntorno(t);
@@ -105,4 +107,32 @@ test("Decisión inválida o ruta incorrecta se rechaza sin mutaciones",async t=>
  assert.equal((await e.req(ruta,{method:"POST",cookie:e.cookie,body:{decision:"aplicar"}})).status,400);
  assert.equal((await e.req("/admin/compras/0/respuestas",{cookie:e.cookie})).status,400);
  assert.equal((await e.bandeja.listarPorCompra({compraId:e.c1}))[0].estado,"pendiente_revision");
+});
+
+test("Aplicación HTTP solo admin y revisión esperada obligatoria",async t=>{
+ const e=await crearEntorno(t);
+ const ruta="/admin/compras/"+e.c1+"/respuestas/"+e.mensaje.id+"/aplicar";
+ assert.equal((await e.req(ruta,{method:"POST",body:{confirmacion:true,revisionEsperada:0}})).status,401);
+ assert.equal((await e.req(ruta,{method:"POST",cookie:e.cookie,body:{confirmacion:false,revisionEsperada:0}})).status,400);
+ const ok=await e.req(ruta,{method:"POST",cookie:e.cookie,body:{confirmacion:true,revisionEsperada:0}});
+ assert.equal(ok.status,200,JSON.stringify(ok.data));
+ assert.equal(ok.data.aplicacion.estado,"comprado");
+ assert.equal(ok.data.inventarioGlobalModificado,false);
+ assert.equal((await e.compras.obtenerCompra({compraId:e.c1})).items[0].estado,"comprado");
+ const rep=await e.req(ruta,{method:"POST",cookie:e.cookie,body:{confirmacion:true,revisionEsperada:0}});
+ assert.equal(rep.status,200);assert.equal(rep.data.aplicacion.yaAplicada,true);
+ assert.equal((await e.req("/admin/compras/"+e.c1+"/aplicaciones",{cookie:e.cookie})).data.aplicaciones.length,1);
+ assert.equal(Number((await e.cliente.execute("SELECT agotado FROM productos WHERE id=1")).rows[0].agotado),1);
+});
+test("Aplicación por URL de otra compra y versión obsoleta fallan cerradas",async t=>{
+ const e=await crearEntorno(t);
+ const mal=await e.req("/admin/compras/"+e.c2+"/respuestas/"+e.mensaje.id+"/aplicar",{
+  method:"POST",cookie:e.cookie,body:{confirmacion:true,revisionEsperada:0}});
+ assert.equal(mal.status,409);
+ const item=(await e.compras.obtenerCompra({compraId:e.c1})).items[0];
+ await e.compras.cambiarEstadoItem({compraId:e.c1,itemId:item.id,estado:"no_disponible",revisionEsperada:0});
+ const obsoleto=await e.req("/admin/compras/"+e.c1+"/respuestas/"+e.mensaje.id+"/aplicar",{
+  method:"POST",cookie:e.cookie,body:{confirmacion:true,revisionEsperada:0}});
+ assert.equal(obsoleto.status,409);
+ assert.equal((await e.compras.obtenerCompra({compraId:e.c1})).items[0].estado,"no_disponible");
 });
