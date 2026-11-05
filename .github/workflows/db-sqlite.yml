@@ -48,9 +48,10 @@ jobs:
           node --check catalogo/store.js
           node --check tests/catalogo.test.js
           node --check tests/admin-v3.test.js
+          node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
-        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js
+        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js tests/ui-javascript.test.js
 
       - name: Validar sintaxis de integracion libSQL
         run: node --check tests/libsql-real.test.js
