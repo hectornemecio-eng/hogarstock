@@ -38,6 +38,8 @@ jobs:
           node --check tests/http-prototype.test.js
           node --check compras/conciliacion.js
           node --check tests/conciliacion.test.js
+          node --check api/v3-router.js
+          node --check tests/v3-router.test.js
           node --check compras/store.js
           node --check tests/compras.test.js
 
@@ -52,7 +54,15 @@ jobs:
           mkdir -p "$RUNNER_TEMP/hogarstock-libsql-test"
           npm install --prefix "$RUNNER_TEMP/hogarstock-libsql-test" --no-save --package-lock=false --ignore-scripts @libsql/client@0.14.0
 
+      - name: Instalar Express solo para pruebas en el entorno temporal
+        run: npm install --prefix "$RUNNER_TEMP/hogarstock-libsql-test" --no-save --package-lock=false --ignore-scripts @libsql/client@0.14.0 express@4.21.2
+
       - name: Ejecutar tests con cliente libSQL real y archivo local
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
         run: node --test tests/libsql-real.test.js
+
+      - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
+        env:
+          NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
+        run: node --test tests/v3-router.test.js
