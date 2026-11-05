@@ -41,3 +41,16 @@ jobs:
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
         run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js
+
+      - name: Validar sintaxis de integracion libSQL
+        run: node --check tests/libsql-real.test.js
+
+      - name: Instalar solo libSQL de pruebas fuera del proyecto
+        run: |
+          mkdir -p "$RUNNER_TEMP/hogarstock-libsql-test"
+          npm install --prefix "$RUNNER_TEMP/hogarstock-libsql-test" --no-save --package-lock=false --ignore-scripts @libsql/client@0.14.0
+
+      - name: Ejecutar tests con cliente libSQL real y archivo local
+        env:
+          NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
+        run: node --test tests/libsql-real.test.js
