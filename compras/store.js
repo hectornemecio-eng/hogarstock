@@ -302,8 +302,37 @@ function crearAlmacenCompras(cliente, { reloj = Date.now } = {}) {
     });
   }
 
+  async function listarCompras({ limite = 40 } = {}) {
+    exigirInit();
+    if (!Number.isSafeInteger(limite) || limite < 1 || limite > 100) {
+      throw new TypeError("Limite de compras invalido");
+    }
+    const resultado = await cliente.execute({
+      sql: "SELECT c.id,c.estado,c.creada,c.finalizada,c.revision," +
+        "COUNT(i.id) AS total," +
+        "SUM(CASE WHEN i.estado='comprado' THEN 1 ELSE 0 END) AS comprados," +
+        "SUM(CASE WHEN i.estado='pendiente' THEN 1 ELSE 0 END) AS pendientes," +
+        "SUM(CASE WHEN i.estado='no_disponible' THEN 1 ELSE 0 END) AS no_disponibles " +
+        "FROM hogarstock_compras_v3 c " +
+        "LEFT JOIN hogarstock_compra_items_v3 i ON i.compra_id=c.id " +
+        "GROUP BY c.id ORDER BY c.id DESC LIMIT ?",
+      args: [limite],
+    });
+    return resultado.rows.map((fila) => ({
+      id: Number(fila.id),
+      estado: String(fila.estado),
+      creada: Number(fila.creada),
+      finalizada: fila.finalizada == null ? null : Number(fila.finalizada),
+      revision: Number(fila.revision),
+      total: Number(fila.total),
+      comprados: Number(fila.comprados || 0),
+      pendientes: Number(fila.pendientes || 0),
+      noDisponibles: Number(fila.no_disponibles || 0),
+    }));
+  }
+
   return Object.freeze({
-    init, crearCompra, obtenerCompra, cambiarEstadoItem, finalizarCompra,
+    init, crearCompra, obtenerCompra, cambiarEstadoItem, finalizarCompra, listarCompras,
   });
 }
 
