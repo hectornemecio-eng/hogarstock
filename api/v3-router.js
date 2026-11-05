@@ -54,7 +54,7 @@ function validarOrigenConfigurado(origen) {
   return origen;
 }
 
-function crearRouterV3({ acceso, compras, conciliador, sesionesComprador = null, origen, reloj = Date.now }) {
+function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, origen, reloj = Date.now }) {
   const requerido = [
     [acceso, ["iniciarSesionAdmin", "autorizarAdmin", "cerrarSesionAdmin",
       "emitirPermisoCompra", "autorizarCompra"]],
@@ -68,6 +68,10 @@ function crearRouterV3({ acceso, compras, conciliador, sesionesComprador = null,
   if (sesionesComprador && ["canjearInvitacion", "autorizarSesion", "revocarSesion"].some(
     (nombre) => typeof sesionesComprador[nombre] !== "function")) {
     throw new TypeError("Servicio de sesiones de comprador incompleto");
+  }
+  if (catalogo && ["listarProductos", "agregarProducto", "editarProducto", "cambiarNecesidad"].some(
+    (nombre) => typeof catalogo[nombre] !== "function")) {
+    throw new TypeError("Servicio de catalogo incompleto");
   }
   validarOrigenConfigurado(origen);
   if (typeof reloj !== "function") throw new TypeError("Reloj invalido");
@@ -110,7 +114,8 @@ function crearRouterV3({ acceso, compras, conciliador, sesionesComprador = null,
         CONFLICTO_VERSION: 409,
         PRODUCTO_NO_MARCADO_COMO_FALTANTE: 409,
         PRODUCTO_INEXISTENTE: 400,
-        PRODUCTO_DUPLICADO: 400,
+        PRODUCTO_DUPLICADO: 409,
+        CONFLICTO_ESTADO_PRODUCTO: 409,
       };
       if (Object.hasOwn(estados, codigo)) {
         return res.status(estados[codigo]).json({ error: codigo });
@@ -232,6 +237,54 @@ function crearRouterV3({ acceso, compras, conciliador, sesionesComprador = null,
   router.get("/admin/sesion", exigirAdmin, (_req, res) =>
     res.json({ autenticado: true })
   );
+
+  if (catalogo) {
+    router.get("/admin/productos", exigirAdmin, (_req, res) =>
+      ejecutar(_req, res, async () => {
+        const productos = await catalogo.listarProductos();
+        return res.json({ productos });
+      })
+    );
+    router.post("/admin/productos", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const producto = await catalogo.agregarProducto({
+          nombre: req.body?.nombre, categoria: req.body?.categoria,
+        });
+        return res.status(201).json({ producto });
+      })
+    );
+    router.put("/admin/productos/:productoId", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const productoId = enteroPositivo(req.params.productoId);
+        if (productoId === null) return res.status(400).json({ error: "ID_PRODUCTO_INVALIDO" });
+        const producto = await catalogo.editarProducto({
+          productoId, nombre: req.body?.nombre, categoria: req.body?.categoria,
+        });
+        return res.json({ producto });
+      })
+    );
+    router.patch("/admin/productos/:productoId/necesidad", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const productoId = enteroPositivo(req.params.productoId);
+        if (productoId === null) return res.status(400).json({ error: "ID_PRODUCTO_INVALIDO" });
+        const producto = await catalogo.cambiarNecesidad({
+          productoId,
+          agotado: req.body?.agotado,
+          agotadoEsperado: req.body?.agotadoEsperado,
+        });
+        return res.json({ producto });
+      })
+    );
+  }
+
+  if (typeof compras.listarCompras === "function") {
+    router.get("/admin/compras", exigirAdmin, (req, res) =>
+      ejecutar(req, res, async () => {
+        const comprasListado = await compras.listarCompras({ limite: 40 });
+        return res.json({ compras: comprasListado });
+      })
+    );
+  }
 
   router.post("/admin/compras", exigirAdmin, (req, res) =>
     ejecutar(req, res, async () => {
