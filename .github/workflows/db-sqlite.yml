@@ -37,11 +37,12 @@ jobs:
           node --check security/http-prototype.js
           node --check tests/http-prototype.test.js
           node --check compras/conciliacion.js
-          node --check tests/conciliacion.test.js
+          node --check tests/conciliacion.test.js tests/comprador-v3-static.test.js
           node --check api/v3-router.js
           node --check tests/v3-router.test.js
           node --check security/buyer-sessions.js
           node --check tests/buyer-sessions.test.js
+          node --check tests/comprador-v3-static.test.js
           node --check compras/store.js
           node --check tests/compras.test.js
 
