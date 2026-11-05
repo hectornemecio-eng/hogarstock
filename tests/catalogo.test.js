@@ -63,7 +63,7 @@ test("Catálogo: actualización condicional de agotado evita revisión obsoleta"
  const x=await catalogo.cambiarNecesidad({productoId:1,agotado:0,agotadoEsperado:1});
  assert.equal(x.agotado,false);
  await assert.rejects(catalogo.cambiarNecesidad({productoId:1,agotado:1,agotadoEsperado:1}),/ESTADO_SIN_CAMBIO/);
- await assert.rejects(catalogo.cambiarNecesidad({productoId:1,agotado:1,agotadoEsperado:0}),
+ await assert.rejects(catalogo.cambiarNecesidad({productoId:1,agotado:0,agotadoEsperado:1}),
    /CONFLICTO_ESTADO_PRODUCTO/);
  assert.equal(db.prepare("SELECT agotado FROM productos WHERE id=1").get().agotado,0);
 });
