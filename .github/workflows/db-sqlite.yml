@@ -36,11 +36,13 @@ jobs:
           node --check tests/store.test.js
           node --check security/http-prototype.js
           node --check tests/http-prototype.test.js
+          node --check compras/conciliacion.js
+          node --check tests/conciliacion.test.js
           node --check compras/store.js
           node --check tests/compras.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
-        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js
+        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js
 
       - name: Validar sintaxis de integracion libSQL
         run: node --check tests/libsql-real.test.js
