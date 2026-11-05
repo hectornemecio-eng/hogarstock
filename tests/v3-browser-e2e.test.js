@@ -70,6 +70,8 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
 
   await admin.locator("#refreshPurchases").click();
   await admin.locator("#purchaseRows button").first().click();
+  await admin.locator("#showResponses").click();
+  await admin.getByText("Todavía no hay respuestas registradas para esta compra.").waitFor();
   await admin.locator("#showReconciliation").click();
   await admin.getByText("Informe consultado. No se ha modificado el inventario.").waitFor();
   assert.ok((await admin.locator("#reconciliation").innerText()).includes("REVISION_ADMINISTRADOR"));
