@@ -51,6 +51,8 @@ jobs:
           node --check integration/v3-sandbox-server.js
           node --check tests/v3-browser-e2e.test.js
           node --check tests/v3-boundary.test.js
+          node --check whatsapp/auth-store.js
+          node --check tests/wa-auth-store.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
@@ -70,7 +72,7 @@ jobs:
       - name: Ejecutar tests con cliente libSQL real y archivo local
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/libsql-real.test.js
+        run: node --test tests/libsql-real.test.js tests/wa-auth-store.test.js
 
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
