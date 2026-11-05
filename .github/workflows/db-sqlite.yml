@@ -53,10 +53,12 @@ jobs:
           node --check tests/v3-boundary.test.js
           node --check whatsapp/auth-store.js
           node --check tests/wa-auth-store.test.js
+          node --check whatsapp/coordinator.js
+          node --check tests/wa-coordinator.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
-        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js tests/ui-javascript.test.js
+        run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js tests/ui-javascript.test.js tests/wa-coordinator.test.js
 
       - name: Validar sintaxis de integracion libSQL
         run: node --check tests/libsql-real.test.js
