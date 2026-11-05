@@ -159,21 +159,27 @@ async function crearEstadoBaileysCifrado({
     await cliente.batch(instrucciones, "write");
   }
 
+  // Una cola unica garantiza que las escrituras no se reordenen y
+  // que una lectura posterior espere las actualizaciones ya solicitadas.
+  let cola = Promise.resolve();
+  function encolarOperacion(tarea) {
+    const trabajo = cola.then(tarea);
+    cola = trabajo.catch(() => {});
+    return trabajo;
+  }
+  async function esperarEscrituras() {
+    await cola;
+  }
+
   let creds = await leer("creds", "principal");
   if (creds === null) creds = initAuthCreds();
   if (!creds || typeof creds !== "object") {
     throw new Error("WA_CREDENCIALES_INVALIDAS");
   }
 
-  // Serie de escrituras para preservar el orden de eventos creds.update.
-  let cola = Promise.resolve();
-  const saveCreds = () => {
-    const tarea = cola.then(() =>
-      persistirLote([{ tipo: "creds", id: "principal", valor: creds }])
-    );
-    cola = tarea.catch(() => {});
-    return tarea;
-  };
+  const saveCreds = () => encolarOperacion(() =>
+    persistirLote([{ tipo: "creds", id: "principal", valor: creds }])
+  );
 
   const keys = {
     async get(type, ids) {
@@ -181,7 +187,8 @@ async function crearEstadoBaileysCifrado({
       if (!Array.isArray(ids) || ids.length > MAX_BATCH) {
         throw new TypeError("IDs Signal invalidos");
       }
-      const result = {};
+      await esperarEscrituras();
+      const result = Object.create(null);
       for (const id of ids) {
         nombreSeguro(id, "id Signal");
         let value = await leer(type, id);
@@ -207,7 +214,7 @@ async function crearEstadoBaileysCifrado({
           if (cambios.length > MAX_BATCH) throw new TypeError("Lote Signal demasiado grande");
         }
       }
-      if (cambios.length) await persistirLote(cambios);
+      if (cambios.length) await encolarOperacion(() => persistirLote(cambios));
     },
   };
 
