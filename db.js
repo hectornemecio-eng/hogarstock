@@ -7,24 +7,39 @@ const db = createClient({
 });
 
 async function initDB() {
-  try {
-    await db.execute("SELECT categoria FROM productos LIMIT 1");
-  } catch (e) {
-    if (e.message.includes("no such column")) {
-      console.log("⚠️ Tabla antigua detectada sin categorías. Borrando para recrear...");
-      await db.execute("DROP TABLE IF EXISTS productos");
+  // Validar el esquema sin borrar ni recrear tablas existentes.
+  const tablas = await db.execute(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'productos' LIMIT 1"
+  );
+
+  if (tablas.rows.length === 0) {
+    // Solo crear la tabla en una base de datos realmente nueva.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        categoria TEXT NOT NULL,
+        agotado INTEGER DEFAULT 0
+      )
+    `);
+  } else {
+    const columnas = await db.execute("PRAGMA table_info(productos)");
+    const existentes = new Set(
+      columnas.rows.map(columna => String(columna.name))
+    );
+    const requeridas = ["id", "nombre", "categoria", "agotado"];
+    const faltantes = requeridas.filter(nombre => !existentes.has(nombre));
+
+    if (faltantes.length > 0) {
+      throw new Error(
+        "ESQUEMA_INCOMPATIBLE: faltan columnas en productos: " +
+        faltantes.join(", ") +
+        ". No se ha eliminado ni modificado la tabla. " +
+        "Es necesaria una migracion explicita y un respaldo verificado."
+      );
     }
   }
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS productos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      categoria TEXT NOT NULL,
-      agotado INTEGER DEFAULT 0
-    )
-  `);
-  
   const count = await db.execute("SELECT COUNT(*) as c FROM productos");
   if (count.rows[0].c === 0) {
     const productos = [
