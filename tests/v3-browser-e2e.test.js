@@ -89,7 +89,9 @@ test("Navegador HTTPS: invitacion usada no abre una segunda sesion", async (t) =
   await admin.locator("#detail").waitFor({ state: "visible" });
   admin.once("dialog", (dialog) => dialog.accept());
   await admin.locator("#createInvitation").click();
+  await admin.locator("#invitationArea").waitFor({ state: "visible" });
   const enlace = await admin.locator("#invitationLink").inputValue();
+  assert.ok(enlace.startsWith(e.origen + "/comprador-v3.html?compra="));
   const pagina1 = await e.comprador.newPage();
   await pagina1.goto(enlace);
   await pagina1.getByText("Lista disponible.").waitFor();
