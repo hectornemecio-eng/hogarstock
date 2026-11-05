@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createClient } = require("@libsql/client");
+const { EventEmitter } = require("node:events");
+const { crearCoordinadorWhatsApp } = require("../whatsapp/coordinator.js");
 const { randomBytes } = require("node:crypto");
 const { mkdtempSync, rmSync } = require("node:fs");
 const { join } = require("node:path");
@@ -76,4 +78,35 @@ test("Idempotencia con texto distinto rechaza duplicado",async t=>{
   await assert.rejects(e.despachador.enviar({...pedido,mensaje:"Contenido diferente"}),
     /WA_IDEMPOTENCIA_CONFLICTO/);
   assert.equal(intentos,1);
+});
+
+test("Despacho con coordinador: solo la capa interna recibe ID del proveedor",async t=>{
+  let intentos=0;
+  const eventos=new EventEmitter();
+  const coordinador=crearCoordinadorWhatsApp({
+    crearAuth:async()=>({state:{creds:{}},saveCreds:async()=>{}}),
+    consultarVersion:async()=>({isLatest:true,version:[2,3000,101]}),
+    destinatarioPermitido:async telefono=>telefono==="34900000000",
+    fabricaSocket:async()=>({
+      ev:eventos,end(){},
+      async sendMessage(){
+        intentos++;
+        return {key:{id:"FAKE12345"}};
+      },
+    }),
+  });
+  t.after(()=>coordinador.detener());
+  await coordinador.iniciar();
+  eventos.emit("connection.update",{connection:"open"});
+  const e=await entorno(t,datos=>coordinador.enviarTextoParaRegistro(datos));
+  const resultado=await e.despachador.enviar(pedido);
+  assert.equal(resultado.estado,"aceptado_proveedor");
+  assert.equal(intentos,1);
+  assert.equal(JSON.stringify(resultado).includes("FAKE12345"),false);
+  const acuse=await e.registro.registrarAcuse({
+    telefono:"34900000000",proveedorId:"FAKE12345",tipo:"entregado",
+  });
+  assert.equal(acuse.actualizado,true);
+  assert.equal((await e.registro.obtener(resultado.id)).estado,"confirmado_entrega");
+  assert.equal(coordinador.leerEstadoPublico().conectado,true);
 });
