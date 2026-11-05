@@ -1,0 +1,32 @@
+name: HogarStock - pruebas SQLite aisladas
+
+on:
+  push:
+    branches:
+      - seguridad-pruebas-2026-11-05
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-db:
+    name: Validacion de inicializacion db.js
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Comprobar sintaxis
+        run: |
+          node --check db.js
+          node --check tests/db-sqlite.test.js
+
+      - name: Ejecutar pruebas de SQLite en memoria
+        run: node --test tests/db-sqlite.test.js
