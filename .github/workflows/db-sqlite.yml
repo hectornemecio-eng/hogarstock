@@ -28,5 +28,10 @@ jobs:
           node --check db.js
           node --check tests/db-sqlite.test.js
 
-      - name: Ejecutar pruebas de SQLite en memoria
-        run: node --test tests/db-sqlite.test.js
+      - name: Comprobar sintaxis del modulo de seguridad
+        run: |
+          node --check security/access.js
+          node --check tests/access.test.js
+
+      - name: Ejecutar pruebas aisladas SQLite y autorizacion
+        run: node --test tests/db-sqlite.test.js tests/access.test.js
