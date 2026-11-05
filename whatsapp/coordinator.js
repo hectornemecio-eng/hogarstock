@@ -172,7 +172,7 @@ function crearCoordinadorWhatsApp({
     return numero;
   }
 
-  async function enviarInterno({ telefono, mensaje } = {}, conReferencia = false) {
+  async function enviarTexto({ telefono, mensaje } = {}) {
     // NO pasar teléfonos o mensajes a logs, callbacks de estado ni excepciones.
     const numero = normalizarTelefono(telefono);
     if (typeof mensaje !== "string" || !mensaje.trim() ||
@@ -194,30 +194,20 @@ function crearCoordinadorWhatsApp({
         return { estado: "indeterminado", codigo: "WA_CONEXION_CAMBIO_DURANTE_ENVIO" };
       }
       const id = respuesta?.key?.id;
-      if (typeof id !== "string" || !/^[A-Za-z0-9_-]{4,160}$/.test(id)) {
+      if (typeof id !== "string" || !id) {
         return { estado: "indeterminado", codigo: "WA_SIN_ACUSE_DEL_PROVEEDOR" };
       }
-      const resultado = {
+      return {
         estado: "aceptado_por_proveedor",
         codigo: "WA_PROVEEDOR_ACEPTO_SOLICITUD",
         entregado: false,
+        // No incluye ID remoto, JID, destinatario ni contenido.
       };
-      // Solo se devuelve a la capa de registro interna; el método normal
-      // mantiene la respuesta reducida y jamás expone JID, teléfono o texto.
-      return conReferencia ? { ...resultado, proveedorId: id } : resultado;
     } catch (_) {
       // Puede haber sido enviado justo antes de una caída de conexión.
       // No reintentar automáticamente: riesgo de mensajes duplicados.
       return { estado: "indeterminado", codigo: "WA_ENVIO_NO_VERIFICABLE" };
     }
-  }
-  async function enviarTexto(datos) {
-    return enviarInterno(datos, false);
-  }
-  // Exclusivamente para whatsapp/dispatch-service.js; NUNCA publicar
-  // su respuesta en HTTP, WebSocket, registros ni interfaz de usuario.
-  async function enviarTextoParaRegistro(datos) {
-    return enviarInterno(datos, true);
   }
   async function detener() {
     detenido = true;
@@ -232,7 +222,6 @@ function crearCoordinadorWhatsApp({
     iniciar,
     detener,
     enviarTexto,
-    enviarTextoParaRegistro,
     leerEstadoPublico: vistaPublica,
     leerEstadoPrivado,
   });
