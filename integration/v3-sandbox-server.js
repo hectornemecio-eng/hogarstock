@@ -4,6 +4,7 @@
 // Turso, WhatsApp, sus datos o secretos de produccion.
 const express = require("express");
 const https = require("node:https");
+const { randomBytes } = require("node:crypto");
 const { readFileSync, mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
@@ -16,6 +17,7 @@ const { crearCatalogoV3 } = require("../catalogo/store.js");
 const { crearAlmacenCompras } = require("../compras/store.js");
 const { crearConciliadorCompras } = require("../compras/conciliacion.js");
 const { crearRouterV3 } = require("../api/v3-router.js");
+const { crearBandejaWhatsApp } = require("../whatsapp/inbox-store.js");
 
 const CLAVE_DEMO = "HogarStock-V3-Clave-FICTICIA-Solo-Pruebas-2026!";
 
@@ -56,6 +58,11 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     });
     const catalogo = crearCatalogoV3(cliente);
     const conciliador = crearConciliadorCompras(cliente);
+    const bandejaWhatsApp = crearBandejaWhatsApp({
+      cliente, compras: almacenCompras,
+      claveHmacHex: randomBytes(32).toString("hex"),
+    });
+    await bandejaWhatsApp.init();
 
     const app = express();
     app.disable("x-powered-by");
@@ -100,7 +107,7 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     });
     app.use("/api/v3", crearRouterV3({
       acceso, compras: almacenCompras, catalogo, conciliador,
-      sesionesComprador, origen,
+      sesionesComprador, bandejaWhatsApp, origen,
     }));
     app.use((_req, res) => res.status(404).json({ error: "RUTA_INEXISTENTE" }));
 
