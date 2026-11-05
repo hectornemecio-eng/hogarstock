@@ -63,6 +63,7 @@ jobs:
           node --check tests/wa-inbox.test.js
           node --check whatsapp/inbound-baileys.js
           node --check tests/wa-inbound-baileys.test.js
+          node --check tests/wa-inbox-http.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
@@ -87,7 +88,7 @@ jobs:
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js
+        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js tests/wa-inbox-http.test.js
 
       - name: Preparar navegador Chromium exclusivamente para E2E local
         run: |
