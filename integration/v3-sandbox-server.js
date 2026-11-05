@@ -18,6 +18,7 @@ const { crearAlmacenCompras } = require("../compras/store.js");
 const { crearConciliadorCompras } = require("../compras/conciliacion.js");
 const { crearRouterV3 } = require("../api/v3-router.js");
 const { crearBandejaWhatsApp } = require("../whatsapp/inbox-store.js");
+const { crearAplicadorWhatsApp } = require("../whatsapp/apply-proposal.js");
 
 const CLAVE_DEMO = "HogarStock-V3-Clave-FICTICIA-Solo-Pruebas-2026!";
 
@@ -63,6 +64,8 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
       claveHmacHex: randomBytes(32).toString("hex"),
     });
     await bandejaWhatsApp.init();
+    const aplicadorWhatsApp=crearAplicadorWhatsApp({cliente});
+    await aplicadorWhatsApp.init();
 
     const app = express();
     app.disable("x-powered-by");
@@ -107,7 +110,7 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     });
     app.use("/api/v3", crearRouterV3({
       acceso, compras: almacenCompras, catalogo, conciliador,
-      sesionesComprador, bandejaWhatsApp, origen,
+      sesionesComprador, bandejaWhatsApp, aplicadorWhatsApp, origen,
     }));
     app.use((_req, res) => res.status(404).json({ error: "RUTA_INEXISTENTE" }));
 
