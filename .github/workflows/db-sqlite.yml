@@ -40,6 +40,8 @@ jobs:
           node --check tests/conciliacion.test.js
           node --check api/v3-router.js
           node --check tests/v3-router.test.js
+          node --check security/buyer-sessions.js
+          node --check tests/buyer-sessions.test.js
           node --check compras/store.js
           node --check tests/compras.test.js
 
@@ -65,4 +67,4 @@ jobs:
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/v3-router.test.js
+        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js
