@@ -167,6 +167,17 @@ function crearRegistroWhatsApp({cliente,claveHex,reloj=Date.now}={}){
  }
  async function reclamarEnvio(id){
   exigirInit();operacionValida(id);
+  // Dos conexiones SQLite pueden contender por BEGIN IMMEDIATE. Reintentar
+  // SOLAMENTE SQLITE_BUSY, de forma acotada, sin invocar sendMessage.
+  for(let intento=0;intento<5;intento++){
+   try{return await reclamarEnvioUnaVez(id);}
+   catch(error){
+    if(error?.code!=="SQLITE_BUSY"||intento===4)throw error;
+    await new Promise(resolve=>setTimeout(resolve,10*(intento+1)));
+   }
+  }
+ }
+ async function reclamarEnvioUnaVez(id){
   return escribir(cliente,async tx=>{
    const r=await tx.execute({sql:"SELECT * FROM "+TABLA+" WHERE id=? LIMIT 1",args:[id]});
    if(!r.rows.length)return {adquirido:false,estado:"inexistente"};
