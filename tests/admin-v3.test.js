@@ -32,7 +32,7 @@ async function preparar(t){
   conciliador:crearConciliadorCompras(db),origen:"http://127.0.0.1"
  }));
  const server=await new Promise((resolve,reject)=>{const s=app.listen(0,"127.0.0.1",()=>resolve(s));s.on("error",reject);});
- t.after(async()=>{await new Promise(resolve=>server.close(resolve));await db.close();rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});});
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));await db.close();if(process.platform!=="win32")rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});});
  const root="http://127.0.0.1:"+server.address().port+"/api/v3";
  async function request(path,{method="GET",cookie,body,origin="http://127.0.0.1"}={}){
   const headers={};if(cookie)headers.cookie=cookie;
