@@ -89,6 +89,10 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   // Actualizar debe dejar ambos coherentes SIN pulsar Ver.
   await admin.locator("#refreshPurchases").click();
   await admin.getByText("Compras y detalle actualizados.").waitFor();
+  // Esperar el ESTADO real, no un aviso de éxito que pudiera ser previo.
+  await admin.waitForFunction(() => /finalizada/.test(
+    document.getElementById("detailTitle")?.textContent || ""
+  ));
   assert.match(await admin.locator("#detailTitle").innerText(), /finalizada/);
   const detalleFinal=await admin.locator("#detailBody").innerText();
   assert.match(detalleFinal, /1 comprados/);
