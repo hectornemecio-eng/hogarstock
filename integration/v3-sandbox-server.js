@@ -12,6 +12,7 @@ const { createClient } = require("@libsql/client");
 
 const { crearHashContrasena, crearServicioAcceso } = require("../security/access.js");
 const { crearAlmacenSeguridad } = require("../security/store.js");
+const { crearCredencialesAdmin } = require("../security/admin-credentials.js");
 const { crearSesionesComprador } = require("../security/buyer-sessions.js");
 const { crearCatalogoV3 } = require("../catalogo/store.js");
 const { crearAlmacenCompras } = require("../compras/store.js");
@@ -51,11 +52,14 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     const almacenCompras = crearAlmacenCompras(cliente);
     await almacenSeguridad.init();
     await almacenCompras.init();
+    const credenciales=crearCredencialesAdmin({cliente});
+    await credenciales.init({hashInicial:crearHashContrasena(CLAVE_DEMO)});
     const sesionesComprador = crearSesionesComprador({ cliente });
     await sesionesComprador.init();
     const acceso = crearServicioAcceso({
       almacen: almacenSeguridad,
       hashAdministrador: crearHashContrasena(CLAVE_DEMO),
+      credenciales,
     });
     const catalogo = crearCatalogoV3(cliente);
     const conciliador = crearConciliadorCompras(cliente);
