@@ -208,6 +208,7 @@ tr.append(td1,td2,td3,td4);tbody.append(tr);
 if(!state.compras.length){const tr=node("tr"),td=node("td","No hay compras creadas aún.");td.colSpan=4;tr.append(td);tbody.append(tr);}
 }
 $("refreshPurchases").addEventListener("click",()=>run(async()=>{
+  status("Actualizando compras y detalle…");
   await cargar();
   // El resumen se actualiza desde /admin/compras, pero el detalle usa
   // /admin/compras/:id. Refrescar AMBOS sin cerrar la invitación visible.
