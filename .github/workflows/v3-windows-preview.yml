@@ -1,0 +1,80 @@
+name: HogarStock V3 - validar vista local en Windows
+
+on:
+  push:
+    branches:
+      - seguridad-pruebas-2026-11-05
+    paths:
+      - 'scripts/INICIAR_V3_PRUEBA_LOCAL.ps1'
+      - 'integration/launch-v3-local.js'
+      - 'integration/v3-sandbox-server.js'
+      - 'tests/v3-local-preview.test.js'
+      - '.github/workflows/v3-windows-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-preview:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Analizar PowerShell real sin ejecutar cambios
+        shell: pwsh
+        run: |
+          $archivo = Join-Path $PWD 'scripts/INICIAR_V3_PRUEBA_LOCAL.ps1'
+          $tokens = $null
+          $errores = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $archivo, [ref]$tokens, [ref]$errores
+          )
+          if ($errores.Count -gt 0) {
+            $errores | ForEach-Object { Write-Error $_.Message }
+            throw 'SINTAXIS_POWERSHELL_INVALIDA'
+          }
+          $scriptText = Get-Content -LiteralPath $archivo -Raw
+          foreach ($obligatorio in @('Read-Host','D:\HOGARSTOCK_V3_PRUEBA_LOCAL',
+               'CLONACION_FALLIDA','git.exe','NODE_PATH',
+               'COPIA_LOCAL_MODIFICADA','CARPETA_EXISTENTE_INCOMPLETA')) {
+            if (-not $scriptText.Contains($obligatorio)) {
+              throw ('CONTROL_AUSENTE: ' + $obligatorio)
+            }
+          }
+          foreach ($prohibido in @('Set-ExecutionPolicy', 'Invoke-Expression',
+               'git reset --hard', 'git clean -fd', 'Remove-Item -Recurse',
+               'Invoke-WebRequest | Invoke-Expression')) {
+            if ($scriptText.Contains($prohibido)) {
+              throw ('OPERACION_PROHIBIDA: ' + $prohibido)
+            }
+          }
+          Write-Host 'PowerShell Windows: sintaxis válida y controles esenciales presentes.'
+      - name: Preparar demo con dependencias aisladas de Windows
+        shell: pwsh
+        run: |
+          $carpeta = Join-Path $env:RUNNER_TEMP 'hogarstock-v3-windows-test'
+          New-Item -ItemType Directory -Path $carpeta -Force | Out-Null
+          & npm.cmd install --prefix $carpeta --no-save --package-lock=false --ignore-scripts --no-audit --no-fund '@libsql/client@0.14.0' 'express@4.21.2'
+          if ($LASTEXITCODE -ne 0) { throw 'NPM_INSTALACION_FALLIDA' }
+          $env:NODE_PATH = Join-Path $carpeta 'node_modules'
+          $openssl = Get-Command openssl.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty Source
+          if (-not $openssl) {
+            $openssl = Join-Path $env:ProgramFiles 'Git\usr\bin\openssl.exe'
+          }
+          if (-not (Test-Path -LiteralPath $openssl)) {
+            throw 'OPENSSL_NO_ENCONTRADO_EN_RUNNER'
+          }
+          $cert = Join-Path $carpeta 'localhost.crt'
+          $key = Join-Path $carpeta 'localhost.key'
+          & $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -keyout $key -out $cert -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1'
+          if ($LASTEXITCODE -ne 0) { throw 'CERTIFICADO_FALLIDO' }
+          $env:HOGARSTOCK_V3_SANDBOX = '1'
+          $env:HOGARSTOCK_SANDBOX_CERT = $cert
+          $env:HOGARSTOCK_SANDBOX_KEY = $key
+          & node --test tests/v3-local-preview.test.js
+          if ($LASTEXITCODE -ne 0) { throw 'V3_WINDOWS_PREVIEW_FALLIDA' }
