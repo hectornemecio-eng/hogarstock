@@ -249,6 +249,31 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
     res.json({ autenticado: true })
   );
 
+  if(typeof acceso.cambiarContrasenaAdmin==="function"){
+    router.post("/admin/contrasena", exigirAdmin, (req,res)=>
+      ejecutar(req,res,async()=>{
+        if(!req.body || typeof req.body.actual!=="string" ||
+           typeof req.body.nueva!=="string") {
+          return res.status(400).json({error:"DATOS_INVALIDOS"});
+        }
+        const resultado=await acceso.cambiarContrasenaAdmin({
+          token:tokenAdminDeCookie(req),contrasenaActual:req.body.actual,
+          contrasenaNueva:req.body.nueva,
+        });
+        if(resultado.estado==="contrasena_incorrecta"){
+          return res.status(403).json({error:"CONTRASENA_ACTUAL_INCORRECTA"});
+        }
+        if(resultado.estado!=="cambiada"){
+          return res.status(401).json({error:"ADMIN_NO_AUTORIZADO"});
+        }
+        res.clearCookie(COOKIE_ADMIN,{
+          httpOnly:true,secure:true,sameSite:"strict",path:"/api/v3",
+        });
+        return res.json({ok:true,sesionesInvalidadas:true});
+      })
+    );
+  }
+
   if (catalogo) {
     router.get("/admin/productos", exigirAdmin, (_req, res) =>
       ejecutar(_req, res, async () => {
@@ -385,6 +410,19 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
       return res.status(201).json({ invitacion });
     })
   );
+
+  if(sesionesComprador && typeof sesionesComprador.revocarAccesosCompra==="function"){
+    router.post("/admin/compras/:compraId/revocar-accesos",exigirAdmin,
+      (req,res)=>ejecutar(req,res,async()=>{
+        const compraId=enteroPositivo(req.params.compraId);
+        if(compraId===null)return res.status(400).json({error:"ID_COMPRA_INVALIDO"});
+        if(req.body?.confirmacion!==true)
+          return res.status(400).json({error:"CONFIRMACION_REQUERIDA"});
+        const resultado=await sesionesComprador.revocarAccesosCompra({compraId});
+        return res.json({ok:true,...resultado});
+      })
+    );
+  }
 
   router.get("/admin/compras/:compraId/conciliacion", exigirAdmin, (req, res) =>
     ejecutar(req, res, async () => {
