@@ -140,7 +140,11 @@ $("statCompras").textContent=state.compras.filter(c=>c.estado==="abierta").lengt
 renderProductos();renderSeleccion();renderCompras();
 }
 async function login(password){
-await api("/auth/login","POST",{contrasena:password});
+try{await api("/auth/login","POST",{contrasena:password});}
+catch(error){
+  if(error.status===401){showApp(false);status("Contraseña incorrecta.",true);return;}
+  throw error;
+}
 showApp(true);await cargar();status("Sesión administrativa iniciada.");
 }
 $("loginForm").addEventListener("submit",e=>{e.preventDefault();const clave=$("password").value;$("password").value="";run(()=>login(clave));});
