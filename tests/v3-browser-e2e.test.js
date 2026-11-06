@@ -37,6 +37,7 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
 
   await admin.locator('nav [data-tab="compras"]').click();
   await admin.locator('#missingSelection input[type="checkbox"]').first().check();
+  await admin.locator('#missingSelection input[type="checkbox"]').nth(1).check();
   await admin.locator("#createPurchase").click();
   await admin.locator("#detail").waitFor({ state: "visible" });
   const encabezado = await admin.locator("#detailTitle").innerText();
@@ -57,11 +58,11 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   await comprador.getByText("Lista disponible.").waitFor();
   assert.equal(await comprador.evaluate(() => location.hash), "");
   assert.equal(await comprador.locator("#estadoGlobal").innerText(), "En curso");
-  assert.equal(await comprador.locator("#lista li").count(), 1);
+  assert.equal(await comprador.locator("#lista li").count(), 2);
   const combo = comprador.locator("#lista select").first();
   await combo.selectOption("comprado");
   await comprador.getByText("Cambio guardado.").waitFor();
-  assert.match(await comprador.locator("#contador").innerText(), /1\s*\/\s*1/);
+  assert.match(await comprador.locator("#contador").innerText(), /1\s*\/\s*2/);
 
   // Regresión observada en Windows: el listado reflejaba 1/1, pero el
   // detalle de una compra previamente abierta seguía diciendo pendiente.
@@ -69,17 +70,34 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   await admin.locator("#refreshPurchases").click();
   await admin.getByText("Compras y detalle actualizados.").waitFor();
   assert.match(await admin.locator("#detailBody").innerText(), /1 comprados/);
-  assert.match(await admin.locator("#detailBody").innerText(), /0 pendientes/);
+  assert.match(await admin.locator("#detailBody").innerText(), /1 pendientes/);
   // El refresco no debe hacer desaparecer una invitación activa del panel.
   assert.equal(await admin.locator("#invitationArea").isVisible(), true);
+
+  // El segundo producto se declara no disponible y queda reflejado en
+  // la compra antes de finalizarla.
+  await comprador.locator("#lista select").nth(1).selectOption("no_disponible");
+  await comprador.getByText("Cambio guardado.").waitFor();
+  await comprador.getByText("0 pendientes · 1 no disponibles").waitFor();
 
   comprador.once("dialog", (dialog) => dialog.accept());
   await comprador.locator("#finalizar").click();
   await comprador.getByText("Compra finalizada y registrada.").waitFor();
   assert.equal(await comprador.locator("#estadoGlobal").innerText(), "Finalizada");
 
+  // Regresión observada en Windows: listado finalizado y detalle abierto.
+  // Actualizar debe dejar ambos coherentes SIN pulsar Ver.
   await admin.locator("#refreshPurchases").click();
-  await admin.locator("#purchaseRows button").first().click();
+  await admin.getByText("Compras y detalle actualizados.").waitFor();
+  assert.match(await admin.locator("#detailTitle").innerText(), /finalizada/);
+  const detalleFinal=await admin.locator("#detailBody").innerText();
+  assert.match(detalleFinal, /1 comprados/);
+  assert.match(detalleFinal, /0 pendientes/);
+  assert.match(detalleFinal, /1 no disponibles/);
+  assert.equal(await admin.locator("#createInvitation").isDisabled(),true);
+  assert.equal(await admin.locator("#showReconciliation").isEnabled(),true);
+  assert.equal(await admin.locator("#invitationArea").isVisible(),false);
+  assert.match(await admin.locator("#purchaseRows").innerText(), /finalizada/);
   await admin.locator("#showResponses").click();
   await admin.getByText("Todavía no hay respuestas registradas para esta compra.").waitFor();
   assert.equal(await admin.locator("#responses button").count(),0);
