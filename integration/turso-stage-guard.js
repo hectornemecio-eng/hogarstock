@@ -12,7 +12,7 @@ function hostDeUrl(url) {
   let u;
   try { u = new URL(url); } catch (_) { throw new Error("STAGING_URL_INVALIDA"); }
   if (!["libsql:", "https:"].includes(u.protocol) ||
-      u.username || u.password || u.port || u.pathname !== "/" ||
+      u.username || u.password || u.port || !["", "/"].includes(u.pathname) ||
       u.search || u.hash || !/^[a-z0-9.-]+$/.test(u.hostname)) {
     throw new Error("STAGING_URL_INVALIDA");
   }
