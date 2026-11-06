@@ -50,6 +50,11 @@ test("Cambiar contraseña requiere administrador y contraseña actual; no guarda
  assert.equal((await e.request(ruta,{method:"POST",cookie:login.cookie,
    body:{actual:"contraseña incorrecta",nueva}})).status,403);
  assert.equal((await e.request("/admin/sesion",{cookie:login.cookie})).status,200);
+ const igual=await e.request(ruta,{method:"POST",cookie:login.cookie,
+   body:{actual:anterior,nueva:anterior}});
+ assert.equal(igual.status,409);
+ assert.equal(igual.data.error,"CONTRASENA_REUTILIZADA");
+ assert.equal((await e.request("/admin/sesion",{cookie:login.cookie})).status,200);
  assert.equal((await e.login(anterior)).status,200);
  const db=JSON.stringify((await e.db.execute("SELECT * FROM hogarstock_admin_credentials_v3")).rows);
  assert.equal(db.includes(anterior),false);assert.equal(db.includes(nueva),false);
