@@ -207,7 +207,7 @@ function crearServicioAcceso({ almacen, hashAdministrador, credenciales = null, 
     const huellaSesion=huellaToken(token);
     if(!huellaSesion)return {estado:"sesion_no_valida"};
     const nuevoHash=crearHashContrasena(contrasenaNueva);
-    return credenciales.cambiar({huellaSesion,contrasenaActual,nuevoHash});
+    return credenciales.cambiar({huellaSesion,contrasenaActual,contrasenaNueva,nuevoHash});
   }
 
   return Object.freeze({
