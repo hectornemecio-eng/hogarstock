@@ -40,10 +40,10 @@ function crearCredencialesAdmin({cliente,reloj=Date.now}={}){
   if(!r.rows[0]?.hash)throw new Error("ADMIN_CREDENCIALES_AUSENTES");
   return String(r.rows[0].hash);
  }
- async function cambiar({huellaSesion,contrasenaActual,nuevoHash}={}){
+ async function cambiar({huellaSesion,contrasenaActual,contrasenaNueva,nuevoHash}={}){
   exigirInit();
   if(typeof huellaSesion!=="string"||!/^[a-f0-9]{64}$/.test(huellaSesion)||
-     typeof contrasenaActual!=="string"||typeof nuevoHash!=="string"||
+     typeof contrasenaActual!=="string"||typeof contrasenaNueva!=="string"||typeof nuevoHash!=="string"||
      !nuevoHash.startsWith("scrypt:"))throw new TypeError("ADMIN_CAMBIO_ARGUMENTOS_INVALIDOS");
   const fecha=instante();
   const tx=await cliente.transaction("write");
@@ -56,6 +56,10 @@ function crearCredencialesAdmin({cliente,reloj=Date.now}={}){
    if(!valid){await tx.rollback();return {estado:"sesion_no_valida"};}
    if(!verificarContrasena(contrasenaActual,String(actual||""))){
     await tx.rollback();return {estado:"contrasena_incorrecta"};
+   }
+   // Comparar dentro de la misma transaccion evita la carrera con otros cambios.
+   if(verificarContrasena(contrasenaNueva,String(actual||""))){
+    await tx.rollback();return {estado:"contrasena_reutilizada"};
    }
    // La nueva contraseña se valida y genera en el servicio de acceso.
    await tx.execute({sql:"UPDATE "+TABLA+" SET hash=?,actualizado=? WHERE id=1",
