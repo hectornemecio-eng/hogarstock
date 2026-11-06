@@ -169,7 +169,7 @@ test("Navegador HTTPS: cambio de contraseña y revocación administrativa por co
   assert.equal(await admin.locator("#loginPanel").isVisible(),true);
   await admin.locator("#password").fill(CLAVE_DEMO);
   await admin.locator("#loginButton").click();
-  await admin.getByText("Operación no completada: ACCESO_DENEGADO").waitFor();
+  await admin.getByText("Contraseña incorrecta.").waitFor();
   await admin.locator("#password").fill(nueva);
   await admin.locator("#loginButton").click();
   await admin.getByText("Sesión administrativa iniciada.").waitFor();
