@@ -207,11 +207,19 @@ tr.append(td1,td2,td3,td4);tbody.append(tr);
 }
 if(!state.compras.length){const tr=node("tr"),td=node("td","No hay compras creadas aún.");td.colSpan=4;tr.append(td);tbody.append(tr);}
 }
-$("refreshPurchases").addEventListener("click",()=>run(async()=>{await cargar();status("Compras actualizadas.");}));
+$("refreshPurchases").addEventListener("click",()=>run(async()=>{
+  await cargar();
+  // El resumen se actualiza desde /admin/compras, pero el detalle usa
+  // /admin/compras/:id. Refrescar AMBOS sin cerrar la invitación visible.
+  if(state.compraId!==null)await mostrarCompra(state.compraId,{conservarPaneles:true});
+  status("Compras y detalle actualizados.");
+}));
 function ocultarInvitacion(){state.link="";$("invitationLink").value="";$("invitationArea").hidden=true;}
-async function mostrarCompra(id){
-ocultarInvitacion();$("reconciliation").replaceChildren();$("reconciliation").hidden=true;
-$("responses").replaceChildren();$("responses").hidden=true;
+async function mostrarCompra(id,{conservarPaneles=false}={}){
+if(!conservarPaneles){
+  ocultarInvitacion();$("reconciliation").replaceChildren();$("reconciliation").hidden=true;
+  $("responses").replaceChildren();$("responses").hidden=true;
+}
 const data=await api("/admin/compras/"+id);state.compraId=id;state.compraDetalle=data.compra;
 $("detail").hidden=false;$("detailTitle").textContent="Compra #"+id+" · "+data.compra.estado;
 const area=$("detailBody");area.replaceChildren();
@@ -222,6 +230,7 @@ const info=node("div",undefined,"product-name");info.append(node("strong",item.n
 fila.append(info,node("span",item.estado,"pill"));area.append(fila);
 }
 $("createInvitation").disabled=data.compra.estado!=="abierta";$("showReconciliation").disabled=data.compra.estado!=="finalizada";
+if(data.compra.estado!=="abierta")ocultarInvitacion();
 }
 $("closeDetail").addEventListener("click",()=>{$("detail").hidden=true;ocultarInvitacion();state.compraId=null;state.compraDetalle=null;});
 $("createInvitation").addEventListener("click",()=>run(async()=>{
