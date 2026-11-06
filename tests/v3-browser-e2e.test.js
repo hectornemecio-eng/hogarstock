@@ -153,3 +153,50 @@ test("Navegador HTTPS: visitante sin cookie no puede administrar y no lee produc
   assert.equal(respuesta.status, 401);
   assert.equal("productos" in respuesta.data, false);
 });
+
+
+test("Navegador HTTPS: cambio de contraseña y revocación administrativa por compra",async t=>{
+  const e=await entorno(t);
+  const admin=await e.admin.newPage();
+  await iniciarAdmin(admin,e.origen);
+  const nueva="Nueva clave FICTICIA de pruebas V3 segura 2026!";
+  await admin.locator("#passwordCurrent").fill(CLAVE_DEMO);
+  await admin.locator("#passwordNew").fill(nueva);
+  await admin.locator("#passwordRepeat").fill(nueva);
+  admin.once("dialog",dialog=>dialog.accept());
+  await admin.locator('#changePasswordForm button[type="submit"]').click();
+  await admin.getByText("Contraseña cambiada. Inicia sesión con la nueva.").waitFor();
+  assert.equal(await admin.locator("#loginPanel").isVisible(),true);
+  await admin.locator("#password").fill(CLAVE_DEMO);
+  await admin.locator("#loginButton").click();
+  await admin.getByText("Operación no completada: ACCESO_DENEGADO").waitFor();
+  await admin.locator("#password").fill(nueva);
+  await admin.locator("#loginButton").click();
+  await admin.getByText("Sesión administrativa iniciada.").waitFor();
+
+  await admin.locator('nav [data-tab="compras"]').click();
+  await admin.locator('#missingSelection input[type="checkbox"]').first().check();
+  await admin.locator("#createPurchase").click();
+  await admin.locator("#detail").waitFor({state:"visible"});
+  admin.once("dialog",dialog=>dialog.accept());
+  await admin.locator("#createInvitation").click();
+  await admin.locator("#invitationArea").waitFor({state:"visible"});
+  const enlace=await admin.locator("#invitationLink").inputValue();
+  const comprador=await e.comprador.newPage();
+  await comprador.goto(enlace);
+  await comprador.getByText("Lista disponible.").waitFor();
+  const antes=await comprador.evaluate(async()=>{
+    const id=/compra=([0-9]+)/.exec(location.search)?.[1];
+    return (await fetch("/api/v3/compras/"+id,{credentials:"same-origin"})).status;
+  });
+  assert.equal(antes,200);
+  admin.once("dialog",dialog=>dialog.accept());
+  await admin.locator("#revokeAccess").click();
+  await admin.getByText(/Accesos revocados:/).waitFor();
+  assert.equal(await admin.locator("#invitationArea").isVisible(),false);
+  const despues=await comprador.evaluate(async()=>{
+    const id=/compra=([0-9]+)/.exec(location.search)?.[1];
+    return (await fetch("/api/v3/compras/"+id,{credentials:"same-origin"})).status;
+  });
+  assert.equal(despues,403);
+});
