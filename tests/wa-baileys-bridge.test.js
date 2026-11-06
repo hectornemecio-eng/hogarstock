@@ -8,6 +8,7 @@ const {tmpdir}=require("node:os");
 const {join}=require("node:path");
 const {randomBytes}=require("node:crypto");
 const {crearPuenteBaileysV3}=require("../whatsapp/baileys-bridge.js");
+const {crearCoordinadorWhatsApp}=require("../whatsapp/coordinator.js");
 
 async function escenario(t,{modo="sin_red",entorno={},versionOK=true}={}){
  const dir=mkdtempSync(join(tmpdir(),"hs-baileys-bridge-"));
@@ -110,4 +111,36 @@ test("Dependencia Baileys incompatible falla antes de crear sesión",async t=>{
  });
  await assert.rejects(puente.comprobarSinRed(),/WA_PUENTE_BAILEYS_INCOMPATIBLE/);
  assert.equal(e.creados,0);
+});
+
+test("Puente y coordinador juntos: QR privado, entrada y envío con socket simulado",async t=>{
+ const e=await escenario(t,{modo:"conexion",
+  entorno:{HOGARSTOCK_V3_SANDBOX:"1",HOGARSTOCK_V3_WHATSAPP_LIVE:"1"}});
+ const coordinator=crearCoordinadorWhatsApp({
+  crearAuth:e.puente.crearAuth,
+  consultarVersion:e.puente.consultarVersion,
+  fabricaSocket:e.puente.fabricaSocket,
+  destinatarioPermitido:async tel=>tel==="34600111222",
+ });
+ t.after(()=>coordinator.detener());
+ await coordinator.iniciar();
+ assert.equal(e.creados,1);
+ const sock=e.sockets[0];
+ sock.ev.emit("connection.update",{qr:"QR_SOLO_FICTICIO"});
+ assert.equal(coordinator.leerEstadoPrivado().qr,"QR_SOLO_FICTICIO");
+ assert.equal(JSON.stringify(coordinator.leerEstadoPublico()).includes("QR_SOLO_FICTICIO"),false);
+ sock.ev.emit("connection.update",{connection:"open"});
+ const enviado=await coordinator.enviarTextoParaRegistro({telefono:"34600111222",mensaje:"Hola prueba"});
+ assert.equal(enviado.estado,"aceptado_por_proveedor");
+ assert.equal(enviado.proveedorId,"MOCK1234");
+ const publico=await coordinator.enviarTexto({telefono:"34600111222",mensaje:"Hola prueba"});
+ assert.equal(Object.hasOwn(publico,"proveedorId"),false);
+ sock.ev.emit("messages.upsert",{type:"notify",messages:[{
+  key:{remoteJid:"34600111222@s.whatsapp.net",id:"SIMULADOxyz1",fromMe:false},
+  message:{conversation:"COMPRADO 3"},
+ }]});
+ await new Promise(setImmediate);
+ assert.equal(e.recibidos.length,1);
+ await coordinator.detener();
+ assert.equal(e.eventos.filter(x=>x==="socket_cerrado").length,1);
 });
