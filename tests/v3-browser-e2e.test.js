@@ -63,6 +63,16 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   await comprador.getByText("Cambio guardado.").waitFor();
   assert.match(await comprador.locator("#contador").innerText(), /1\s*\/\s*1/);
 
+  // Regresión observada en Windows: el listado reflejaba 1/1, pero el
+  // detalle de una compra previamente abierta seguía diciendo pendiente.
+  assert.match(await admin.locator("#detailBody").innerText(), /0 comprados/);
+  await admin.locator("#refreshPurchases").click();
+  await admin.getByText("Compras y detalle actualizados.").waitFor();
+  assert.match(await admin.locator("#detailBody").innerText(), /1 comprados/);
+  assert.match(await admin.locator("#detailBody").innerText(), /0 pendientes/);
+  // El refresco no debe hacer desaparecer una invitación activa del panel.
+  assert.equal(await admin.locator("#invitationArea").isVisible(), true);
+
   comprador.once("dialog", (dialog) => dialog.accept());
   await comprador.locator("#finalizar").click();
   await comprador.getByText("Compra finalizada y registrada.").waitFor();
