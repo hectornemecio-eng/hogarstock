@@ -57,6 +57,14 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);
 <div class="stat"><span class="muted">Compras abiertas (últimas 40)</span><div id="statCompras" class="big">—</div></div>
 </div>
 <p class="muted">Los productos se administran desde el catálogo. Las compras tienen estados independientes y no modifican automáticamente el inventario al finalizar.</p>
+ <h3>Seguridad del administrador</h3>
+ <p class="muted">Puedes elegir tu contraseña (mínimo 12 caracteres). Al cambiarla se cerrarán todas las sesiones administrativas, incluida esta.</p>
+ <form id="changePasswordForm" class="flex">
+ <div class="field"><label for="passwordCurrent">Contraseña actual</label><input id="passwordCurrent" type="password" autocomplete="current-password" required></div>
+ <div class="field"><label for="passwordNew">Nueva contraseña</label><input id="passwordNew" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></div>
+ <div class="field"><label for="passwordRepeat">Repetir nueva contraseña</label><input id="passwordRepeat" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></div>
+ <div class="field" style="flex:0;align-self:end"><button type="submit">Cambiar contraseña</button></div>
+ </form>
 </section>
 <section class="panel" id="catalogo" hidden>
 <div class="bar"><h2>Catálogo</h2><span class="pill">Sin borrado de productos</span></div>
@@ -84,7 +92,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--muted);
 <section id="detail" class="panel" hidden style="margin-top:14px;background:#fbfdfc">
 <div class="bar"><h3 id="detailTitle">Compra</h3><button id="closeDetail" type="button" class="secondary">Cerrar vista</button></div>
 <div id="detailBody"></div>
-<div class="bar" style="margin-top:15px"><button id="createInvitation" type="button">Crear invitación</button><button id="showReconciliation" class="secondary" type="button">Ver conciliación</button><button id="showResponses" class="secondary" type="button">Respuestas WhatsApp</button></div>
+<div class="bar" style="margin-top:15px"><button id="createInvitation" type="button">Crear invitación</button><button id="showReconciliation" class="secondary" type="button">Ver conciliación</button><button id="showResponses" class="secondary" type="button">Respuestas WhatsApp</button><button id="revokeAccess" class="secondary" type="button">Revocar accesos</button></div>
 <div id="invitationArea" hidden>
 <label for="invitationLink">Enlace privado para compartir (uso único)</label>
 <input id="invitationLink" type="text" readonly autocomplete="off">
@@ -138,6 +146,19 @@ showApp(true);await cargar();status("Sesión administrativa iniciada.");
 $("loginForm").addEventListener("submit",e=>{e.preventDefault();const clave=$("password").value;$("password").value="";run(()=>login(clave));});
 $("logout").addEventListener("click",()=>run(async()=>{
 await api("/auth/logout","POST",{});state.link="";state.selected.clear();showApp(false);status("Sesión cerrada.");}));
+$("changePasswordForm").addEventListener("submit",e=>{e.preventDefault();run(async()=>{
+const form=$("changePasswordForm");
+const actual=$("passwordCurrent").value,nueva=$("passwordNew").value,
+repetida=$("passwordRepeat").value;
+if(nueva!==repetida){status("Las contraseñas nuevas no coinciden.",true);return;}
+if(nueva.length<12){status("La nueva contraseña debe tener al menos 12 caracteres.",true);return;}
+if(!confirm("¿Cambiar la contraseña y cerrar todas las sesiones administrativas?"))return;
+try{
+await api("/admin/contrasena","POST",{actual,nueva});
+form.reset();state.link="";state.selected.clear();showApp(false);
+status("Contraseña cambiada. Inicia sesión con la nueva.");
+}catch(error){form.reset();throw error;}
+});});
 $("refreshAll").addEventListener("click",()=>run(async()=>{await cargar();status("Datos actualizados.");}));
 function renderProductos(){
 const filtro=$("filterProducts").value.trim().toLocaleLowerCase();
@@ -234,6 +255,15 @@ $("createInvitation").disabled=data.compra.estado!=="abierta";$("showReconciliat
 if(data.compra.estado!=="abierta")ocultarInvitacion();
 }
 $("closeDetail").addEventListener("click",()=>{$("detail").hidden=true;ocultarInvitacion();state.compraId=null;state.compraDetalle=null;});
+$("revokeAccess").addEventListener("click",()=>run(async()=>{
+if(state.compraId===null)return;
+if(!confirm("¿Revocar todas las invitaciones y cerrar todas las sesiones de comprador de esta compra?"))return;
+const id=state.compraId;
+const resultado=await api("/admin/compras/"+id+"/revocar-accesos","POST",{confirmacion:true});
+ocultarInvitacion();
+status("Accesos revocados: "+resultado.invitacionesRevocadas+
+" invitaciones y "+resultado.sesionesRevocadas+" sesiones. No se modificó la compra.");
+}));
 $("createInvitation").addEventListener("click",()=>run(async()=>{
 if(!state.compraId||state.compraDetalle?.estado!=="abierta")return;
 if(!confirm("¿Crear un enlace de un solo uso? Será visible únicamente hasta que lo ocultes o cambies de pantalla."))return;
