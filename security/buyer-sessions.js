@@ -181,7 +181,32 @@ function crearSesionesComprador({ cliente, reloj = Date.now }) {
     return Number(cambio.rowsAffected) === 1;
   }
 
-  return Object.freeze({ init, canjearInvitacion, autorizarSesion, revocarSesion });
+  // Revoca TODAS las invitaciones (usadas o pendientes) y las sesiones
+  // activas de UNA compra. No afecta compradores de otras compras.
+  async function revocarAccesosCompra({compraId}={}){
+    exigirInit();
+    const id=idValido(compraId);
+    return transaccion(cliente,async(tx)=>{
+      const compra=await tx.execute({sql:
+        "SELECT id FROM hogarstock_compras_v3 WHERE id=? LIMIT 1",
+        args:[Number(id)]});
+      if(!compra.rows.length)throw new Error("COMPRA_NO_ENCONTRADA");
+      const fecha=ahora();
+      const grants=await tx.execute({sql:
+        "UPDATE hogarstock_purchase_grants_v3 SET revocado=?"+
+        " WHERE compra_id=? AND revocado IS NULL",
+        args:[fecha,id]});
+      const sesiones=await tx.execute({sql:
+        "UPDATE "+TABLA+" SET revocado=?"+
+        " WHERE compra_id=? AND revocado IS NULL",
+        args:[fecha,id]});
+      return {invitacionesRevocadas:Number(grants.rowsAffected),
+        sesionesRevocadas:Number(sesiones.rowsAffected)};
+    });
+  }
+
+  return Object.freeze({ init, canjearInvitacion, autorizarSesion, revocarSesion,
+    revocarAccesosCompra });
 }
 
 module.exports = { crearSesionesComprador };
