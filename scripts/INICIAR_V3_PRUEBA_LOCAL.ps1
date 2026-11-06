@@ -1,112 +1,171 @@
-# HogarStock V3 - Vista local con datos ficticios.
-# PEGAR EN POWERSHELL COMPLETO, o ejecutar como .ps1 si esta permitido.
-# NO modifica E:\hogarstock, Render, Turso, WhatsApp ni GitHub main.
-# Crea SOLO una carpeta nueva en D:, instala dependencias dentro y pide S/N.
+# HOGARSTOCK V3 | DEMOSTRACION LOCAL REUTILIZABLE
+# Solo datos ficticios. No modifica V2, Render, Turso ni WhatsApp.
+# Pegar este archivo COMPLETO en PowerShell de Windows. Pregunta S/N.
+# Primera ejecucion: prepara D:\HOGARSTOCK_V3_PRUEBA_LOCAL.
+# Siguientes ejecuciones: utiliza la misma copia sin borrarla ni actualizarla.
 
 $ErrorActionPreference = 'Stop'
 $Directorio = 'D:\HOGARSTOCK_V3_PRUEBA_LOCAL'
 $Rama = 'seguridad-pruebas-2026-11-05'
 $Repositorio = 'https://github.com/hectornemecio-eng/hogarstock.git'
+$fuente = Join-Path $Directorio 'FUENTE_V3'
+$librerias = Join-Path $Directorio 'DEPENDENCIAS_AISLADAS'
+$temp = Join-Path $Directorio 'TEMP'
+$original = @{}
+$nombres = @('HOGARSTOCK_V3_SANDBOX','HOGARSTOCK_SANDBOX_CERT',
+    'HOGARSTOCK_SANDBOX_KEY','NODE_PATH','NODE_OPTIONS',
+    'NODE_TLS_REJECT_UNAUTHORIZED','npm_config_cache','TMP','TEMP')
+$variablesPreparadas = $false
+$cert = $null
+$key = $null
 
 function Buscar-Comando([string]$Nombre) {
-    $comando = Get-Command $Nombre -ErrorAction SilentlyContinue
+    $comando = Get-Command $Nombre -ErrorAction SilentlyContinue |
+        Select-Object -First 1
     if ($null -eq $comando) { throw "REQUISITO_AUSENTE: $Nombre" }
     return $comando.Source
+}
+function Exigir-CodigoCorrecto([string]$Codigo) {
+    if ($LASTEXITCODE -ne 0) { throw $Codigo }
 }
 
 try {
     if (-not (Test-Path -LiteralPath 'D:\')) {
-        throw 'UNIDAD_D_NO_ENCONTRADA. No se ha realizado ningun cambio.'
+        throw 'NO_EXISTE_LA_UNIDAD_D'
     }
-    if (Test-Path -LiteralPath $Directorio) {
-        throw 'DESTINO_YA_EXISTE. No se borra ni sobrescribe esa carpeta.'
+    if ($env:TURSO_DATABASE_URL -or $env:TURSO_AUTH_TOKEN -or
+        $env:WA_MASTER_KEY -or $env:HOGARSTOCK_V3_WHATSAPP_LIVE -eq '1') {
+        throw 'VARIABLES_DE_PRODUCCION_PRESENTES'
     }
-    if (-not [string]::IsNullOrEmpty($env:TURSO_DATABASE_URL) -or
-        -not [string]::IsNullOrEmpty($env:TURSO_AUTH_TOKEN) -or
-        $env:HOGARSTOCK_V3_WHATSAPP_LIVE -eq '1' -or
-        -not [string]::IsNullOrEmpty($env:WA_MASTER_KEY)) {
-        throw 'ENTORNO_DE_PRODUCCION_DETECTADO. No iniciar pruebas en esta consola.'
-    }
-
-    $git = Buscar-Comando 'git'
-    $node = Buscar-Comando 'node'
+    $git = Buscar-Comando 'git.exe'
+    $node = Buscar-Comando 'node.exe'
     $npm = Buscar-Comando 'npm.cmd'
+    $nodeVersion = (& $node --version).Trim()
+    Exigir-CodigoCorrecto 'NODE_NO_DISPONIBLE'
+    $major = [int](($nodeVersion.TrimStart('v')).Split('.')[0])
+    if ($major -lt 22) { throw 'SE_REQUIERE_NODE_22_O_SUPERIOR' }
 
-    $openssl = (Get-Command 'openssl.exe' -ErrorAction SilentlyContinue |
-        Select-Object -First 1 -ExpandProperty Source)
+    $openssl = Get-Command 'openssl.exe' -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty Source
     if (-not $openssl) {
         $candidatos = @(
             (Join-Path $env:ProgramFiles 'Git\usr\bin\openssl.exe'),
             (Join-Path $env:ProgramFiles 'Git\mingw64\bin\openssl.exe')
         )
-        $openssl = $candidatos | Where-Object { Test-Path -LiteralPath $_ } |
-            Select-Object -First 1
+        $openssl = $candidatos | Where-Object {
+            Test-Path -LiteralPath $_
+        } | Select-Object -First 1
     }
-    if (-not $openssl) {
-        throw 'OPENSSL_NO_DISPONIBLE. Necesario para un certificado temporal; no se ha instalado nada.'
+    if (-not $openssl) { throw 'NO_SE_ENCUENTRA_OPENSSL_EN_GIT_O_PATH' }
+
+    $primerUso = -not (Test-Path -LiteralPath $Directorio)
+    if (-not $primerUso) {
+        if (-not (Test-Path -LiteralPath (Join-Path $fuente '.git')) -or
+            -not (Test-Path -LiteralPath (Join-Path $fuente 'integration\launch-v3-local.js'))) {
+            throw 'CARPETA_EXISTENTE_INCOMPLETA: no se sobrescribe; revisar manualmente'
+        }
+        $ramaLocal = (& $git -C $fuente branch --show-current).Trim()
+        Exigir-CodigoCorrecto 'NO_SE_PUDO_VERIFICAR_RAMA_LOCAL'
+        $origen = (& $git -C $fuente remote get-url origin).Trim()
+        Exigir-CodigoCorrecto 'NO_SE_PUDO_VERIFICAR_REPOSITORIO'
+        if ($ramaLocal -ne $Rama -or $origen -ne $Repositorio) {
+            throw 'COPIA_LOCAL_NO_CORRESPONDE_A_HOGARSTOCK_V3'
+        }
+        $cambios = (& $git -C $fuente status --porcelain)
+        Exigir-CodigoCorrecto 'NO_SE_PUDO_VERIFICAR_ESTADO_GIT'
+        if ($cambios) {
+            throw 'COPIA_LOCAL_MODIFICADA: no se ejecuta codigo sin verificar'
+        }
     }
 
     Write-Host ''
-    Write-Host 'HOGARSTOCK V3 | VISTA LOCAL Y FICTICIA' -ForegroundColor Cyan
-    Write-Host 'Carpeta exclusiva:' $Directorio
-    Write-Host 'Clonara unicamente la rama de pruebas.'
-    Write-Host 'Instalara Express y libSQL SOLAMENTE dentro de la carpeta de ensayos.'
-    Write-Host 'Certificado temporal NO confiable, sin instalar certificados en Windows.'
-    Write-Host 'WhatsApp y Turso remoto NO se conectaran.'
-    Write-Host 'El catalogo y las compras de la demostracion se eliminan al cerrar Node.'
-    $respuesta = (Read-Host 'Crear e iniciar esta vista local? (S/N)').Trim().ToUpperInvariant()
+    Write-Host 'HOGARSTOCK V3 - PRUEBA LOCAL' -ForegroundColor Cyan
+    Write-Host 'Ubicacion: ' $Directorio
+    Write-Host 'Primera instalacion: ' $primerUso
+    Write-Host 'Datos: ficticios, temporales y solo en este equipo.'
+    Write-Host 'Sin WhatsApp, sin Turso remoto y sin modificaciones en Render.'
+    Write-Host 'No se instalan certificados en Windows ni herramientas globales.'
+    if (-not $primerUso) {
+        Write-Host 'Se utilizara la version local existente, SIN actualizacion automatica.'
+    }
+    $respuesta = (Read-Host 'Autorizar la preparacion/inicio de la demo (S/N)').Trim().ToUpperInvariant()
     if ($respuesta -ne 'S') {
-        Write-Host 'CANCELADO: sin cambios.'
+        Write-Host 'CANCELADO: no se ha cambiado nada.'
         return
     }
 
-    New-Item -ItemType Directory -Path $Directorio -ErrorAction Stop | Out-Null
-    $fuente = Join-Path $Directorio 'FUENTE_V3'
-    $librerias = Join-Path $Directorio 'DEPENDENCIAS_AISLADAS'
-    $temp = Join-Path $Directorio 'TEMP'
-    New-Item -ItemType Directory -Path $temp -Force | Out-Null
-
-    & $git clone --depth 1 --single-branch --branch $Rama $Repositorio $fuente
-    if ($LASTEXITCODE -ne 0) { throw 'DESCARGA_GITHUB_FALLIDA. No se ha tocado produccion.' }
-    $commit = (& $git -C $fuente rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'NO_SE_PUDO_VERIFICAR_EL_COMMIT.' }
-    Write-Host 'Version local:' $commit
-
-    & $npm install --prefix $librerias --no-save --package-lock=false --ignore-scripts --no-audit --no-fund '@libsql/client@0.14.0' 'express@4.21.2'
-    if ($LASTEXITCODE -ne 0) { throw 'DEPENDENCIAS_NO_INSTALADAS.' }
-
-    $cert = Join-Path $temp 'localhost-demo.crt'
-    $key = Join-Path $temp 'localhost-demo.key'
-    & $openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -keyout $key -out $cert -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1'
-    if ($LASTEXITCODE -ne 0) { throw 'CERTIFICADO_LOCAL_NO_GENERADO.' }
-
-    $anterior = @{}
-    $nombres = @('HOGARSTOCK_V3_SANDBOX','HOGARSTOCK_SANDBOX_CERT',
-        'HOGARSTOCK_SANDBOX_KEY','NODE_PATH','TMP','TEMP')
-    foreach ($nombre in $nombres) {
-        $anterior[$nombre] = [Environment]::GetEnvironmentVariable($nombre,'Process')
+    if ($primerUso) {
+        New-Item -ItemType Directory -Path $Directorio -ErrorAction Stop | Out-Null
     }
-    try {
-        $env:HOGARSTOCK_V3_SANDBOX = '1'
-        $env:HOGARSTOCK_SANDBOX_CERT = $cert
-        $env:HOGARSTOCK_SANDBOX_KEY = $key
-        $env:NODE_PATH = Join-Path $librerias 'node_modules'
-        $env:TMP = $temp
-        $env:TEMP = $temp
+    if (-not (Test-Path -LiteralPath $temp)) {
+        New-Item -ItemType Directory -Path $temp -ErrorAction Stop | Out-Null
+    }
+    foreach ($nombre in $nombres) {
+        $original[$nombre] = [Environment]::GetEnvironmentVariable($nombre,'Process')
+    }
+    $variablesPreparadas = $true
+    $env:TEMP = $temp
+    $env:TMP = $temp
+    $env:npm_config_cache = Join-Path $Directorio 'CACHE_NPM'
+    $env:NODE_TLS_REJECT_UNAUTHORIZED = '1'
+    $env:NODE_OPTIONS = ''
 
-        Write-Host ''
-        Write-Host 'Abriendo vista de pruebas HTTPS en este equipo...' -ForegroundColor Cyan
-        Write-Host 'El certificado local no es un certificado publico de produccion.'
-        Write-Host 'Pulsa Ctrl+C cuando termines. No cierres la consola durante la prueba.'
-        & $node (Join-Path $fuente 'integration\launch-v3-local.js')
-        if ($LASTEXITCODE -ne 0) { throw 'VISTA_LOCAL_NO_INICIADA_O_CERRADA_CON_ERROR.' }
-    } finally {
+    if ($primerUso) {
+        & $git clone --depth 1 --single-branch --branch $Rama $Repositorio $fuente
+        Exigir-CodigoCorrecto 'CLONACION_FALLIDA'
+    }
+    $commit = (& $git -C $fuente rev-parse HEAD).Trim()
+    Exigir-CodigoCorrecto 'COMMIT_NO_VERIFICADO'
+    Write-Host ('Commit del ensayo: ' + $commit)
+
+    $pkgExpress = Join-Path $librerias 'node_modules\express\package.json'
+    $pkgLibsql = Join-Path $librerias 'node_modules\@libsql\client\package.json'
+    if (-not (Test-Path -LiteralPath $pkgExpress) -or
+        -not (Test-Path -LiteralPath $pkgLibsql)) {
+        $argsNpm = @('install','--prefix',$librerias,'--no-save',
+            '--package-lock=false','--ignore-scripts','--no-audit','--no-fund',
+            '@libsql/client@0.14.0','express@4.21.2')
+        & $npm @argsNpm
+        Exigir-CodigoCorrecto 'DEPENDENCIAS_DE_LA_DEMO_NO_INSTALADAS'
+    }
+
+    $identificador = [guid]::NewGuid().ToString('N')
+    $cert = Join-Path $temp ("localhost-" + $identificador + ".crt")
+    $key = Join-Path $temp ("localhost-" + $identificador + ".key")
+    $argsOpenSsl = @('req','-x509','-newkey','rsa:2048','-sha256',
+        '-nodes','-days','1','-keyout',$key,'-out',$cert,
+        '-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1')
+    & $openssl @argsOpenSsl
+    Exigir-CodigoCorrecto 'NO_SE_PUDO_GENERAR_CERTIFICADO_LOCAL'
+
+    $env:HOGARSTOCK_V3_SANDBOX = '1'
+    $env:HOGARSTOCK_SANDBOX_CERT = $cert
+    $env:HOGARSTOCK_SANDBOX_KEY = $key
+    $env:NODE_PATH = Join-Path $librerias 'node_modules'
+
+    Write-Host ''
+    Write-Host 'INICIANDO V3 - SOLO EN ESTE ORDENADOR' -ForegroundColor Cyan
+    Write-Host 'El servidor mostrara una URL https://127.0.0.1 y la clave DEMO.'
+    Write-Host 'El certificado autofirmado puede producir una advertencia local.'
+    Write-Host 'Para terminar: Ctrl+C. Puedes ejecutar este script nuevamente.'
+    & $node (Join-Path $fuente 'integration\launch-v3-local.js')
+    Exigir-CodigoCorrecto 'DEMOSTRACION_CERRADA_CON_ERROR'
+}
+catch {
+    Write-Host ('ERROR: ' + $_.Exception.Message) -ForegroundColor Red
+    Write-Host 'Produccion y sus datos no se han modificado desde esta prueba.'
+    Write-Host 'No se borra ninguna carpeta de ensayo existente.'
+}
+finally {
+    if ($variablesPreparadas) {
         foreach ($nombre in $nombres) {
-            [Environment]::SetEnvironmentVariable($nombre,$anterior[$nombre],'Process')
+            [Environment]::SetEnvironmentVariable($nombre,$original[$nombre],'Process')
         }
     }
-} catch {
-    Write-Host ('ERROR: ' + $_.Exception.Message) -ForegroundColor Red
-    Write-Host 'No se ha alterado la aplicacion publicada ni la base de datos real.'
-    Write-Host 'La carpeta de ensayos, si llego a crearse, se conserva para inspeccion.'
+    # Eliminar SOLO los dos archivos efimeros generados en esta ejecucion.
+    foreach ($archivo in @($cert,$key)) {
+        if ($archivo -and (Test-Path -LiteralPath $archivo)) {
+            Remove-Item -LiteralPath $archivo -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
