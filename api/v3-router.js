@@ -263,6 +263,9 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
         if(resultado.estado==="contrasena_incorrecta"){
           return res.status(403).json({error:"CONTRASENA_ACTUAL_INCORRECTA"});
         }
+        if(resultado.estado==="contrasena_reutilizada"){
+          return res.status(409).json({error:"CONTRASENA_REUTILIZADA"});
+        }
         if(resultado.estado!=="cambiada"){
           return res.status(401).json({error:"ADMIN_NO_AUTORIZADO"});
         }
