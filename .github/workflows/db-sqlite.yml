@@ -31,6 +31,8 @@ jobs:
       - name: Comprobar sintaxis del modulo de seguridad
         run: |
           node --check security/access.js
+          node --check security/admin-credentials.js
+          node --check tests/v3-security-controls.test.js
           node --check tests/access.test.js
           node --check security/store.js
           node --check tests/store.test.js
@@ -101,7 +103,7 @@ jobs:
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js tests/wa-inbox-http.test.js
+        run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js tests/wa-inbox-http.test.js tests/v3-security-controls.test.js
 
       - name: Preparar navegador Chromium exclusivamente para E2E local
         run: |
