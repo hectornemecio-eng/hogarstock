@@ -114,12 +114,15 @@ function comprobarAlmacen(almacen) {
   }
 }
 
-function crearServicioAcceso({ almacen, hashAdministrador, reloj = Date.now }) {
+function crearServicioAcceso({ almacen, hashAdministrador, credenciales = null, reloj = Date.now }) {
   comprobarAlmacen(almacen);
   if (!parsearHashContrasena(hashAdministrador)) {
     throw new Error("HOGARSTOCK_ADMIN_PASSWORD_HASH ausente o invalido; acceso bloqueado");
   }
   if (typeof reloj !== "function") throw new TypeError("Reloj no valido");
+  if(credenciales && (typeof credenciales.leerHash!=="function" || typeof credenciales.cambiar!=="function")){
+    throw new TypeError("ADMIN_CREDENCIALES_SERVICIO_INVALIDO");
+  }
 
   const instante = () => {
     const ahora = reloj();
@@ -131,7 +134,8 @@ function crearServicioAcceso({ almacen, hashAdministrador, reloj = Date.now }) {
 
   async function iniciarSesionAdmin({ contrasena, ttlMs }) {
     verificarDuracion(ttlMs);
-    if (!verificarContrasena(contrasena, hashAdministrador)) {
+    const hashActual=credenciales?await credenciales.leerHash():hashAdministrador;
+    if (!verificarContrasena(contrasena, hashActual)) {
       return null;
     }
     const creado = instante();
@@ -196,10 +200,21 @@ function crearServicioAcceso({ almacen, hashAdministrador, reloj = Date.now }) {
     return true;
   }
 
+  async function cambiarContrasenaAdmin({token,contrasenaActual,contrasenaNueva}){
+    if(!credenciales)throw new Error("ADMIN_CAMBIO_NO_CONFIGURADO");
+    comprobarContrasena(contrasenaNueva);
+    if(typeof contrasenaActual!=="string")throw new TypeError("CONTRASENA_ACTUAL_INVALIDA");
+    const huellaSesion=huellaToken(token);
+    if(!huellaSesion)return {estado:"sesion_no_valida"};
+    const nuevoHash=crearHashContrasena(contrasenaNueva);
+    return credenciales.cambiar({huellaSesion,contrasenaActual,nuevoHash});
+  }
+
   return Object.freeze({
     iniciarSesionAdmin,
     autorizarAdmin,
     cerrarSesionAdmin,
+    ...(credenciales?{cambiarContrasenaAdmin}:{}),
     emitirPermisoCompra,
     autorizarCompra,
     revocarPermisoCompra,
