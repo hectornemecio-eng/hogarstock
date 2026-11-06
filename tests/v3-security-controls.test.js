@@ -29,7 +29,7 @@ async function escenario(t){
  app.use("/api/v3",crearRouterV3({acceso,compras,sesionesComprador,
   conciliador:crearConciliadorCompras(db),origen}));
  const server=await new Promise((ok,bad)=>{const s=app.listen(0,"127.0.0.1",()=>ok(s));s.on("error",bad);});
- t.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true});});
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));await db.close();rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});});
  const base="http://127.0.0.1:"+server.address().port+"/api/v3";
  async function request(path,{method="GET",cookie,body}={}){
   const headers={};if(cookie)headers.cookie=cookie;
