@@ -19,7 +19,7 @@ const ORIGEN = "http://127.0.0.1";
 async function preparar(t) {
   const carpeta = mkdtempSync(join(tmpdir(), "hogarstock-sesion-compra-"));
   const cliente = createClient({ url: "file:" + join(carpeta, "test.sqlite") });
-  t.after(async () => { cliente.close(); rmSync(carpeta, { recursive: true, force: true }); });
+  t.after(async () => { await cliente.close(); rmSync(carpeta, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); });
   await cliente.batch([
     "CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,categoria TEXT NOT NULL,agotado INTEGER DEFAULT 0)",
     "INSERT INTO productos(id,nombre,categoria,agotado) VALUES (1,'Leche','Lacteos',1),(2,'Pan','Panaderia',1)",
