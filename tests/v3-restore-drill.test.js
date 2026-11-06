@@ -105,14 +105,18 @@ test("Clave errónea en copia no destruye ciphertext ni desbloquea mensajes",asy
  copyFileSync(e.snapshot,e.recuperacion,constants.COPYFILE_EXCL);
  const hashAntes=hashArchivo(e.recuperacion);
  const recuperada=e.conectar(e.recuperacion);
- const otras={...e.k,auth:randomBytes(32).toString("hex"),outbox:randomBytes(32).toString("hex")};
- // Los inicializadores no eliminan las tablas, pero los datos deben
- // quedar inaccesibles con una clave maestra equivocada.
- const modulos=await iniciarModulosV3({cliente:recuperada,secretos:otras});
+ const malaClaveAuth={...e.k,auth:randomBytes(32).toString("hex")};
+ // El arranque completo debe rechazar INMEDIATAMENTE las credenciales de
+ // sesión con clave errónea, antes de iniciar un socket o tocar el outbox.
+ await assert.rejects(
+  iniciarModulosV3({cliente:recuperada,secretos:malaClaveAuth}),
+  /WA_AUTH_NO_DESCIFRABLE/
+ );
+ const malaClaveOutbox={...e.k,outbox:randomBytes(32).toString("hex")};
+ const modulos=await iniciarModulosV3({cliente:recuperada,secretos:malaClaveOutbox});
  await assert.rejects(modulos.outbox.reclamarEnvio(e.mensaje.id),/WA_OUTBOX_NO_DESCIFRABLE/);
- await assert.rejects(crearEstadoBaileysCifrado(authArgs(recuperada,otras)),/WA_AUTH_NO_DESCIFRABLE/);
- assert.equal(hashArchivo(e.recuperacion),hashAntes);
  assert.equal((await modulos.outbox.obtener(e.mensaje.id)).estado,"pendiente");
+ assert.equal(hashArchivo(e.recuperacion),hashAntes);
 });
 
 test("Copia de recuperación no sobrescribe una base ya existente",async t=>{
