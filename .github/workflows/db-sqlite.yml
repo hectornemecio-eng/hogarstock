@@ -72,6 +72,8 @@ jobs:
           node --check integration/turso-stage-guard.js
           node --check integration/turso-stage-bootstrap.js
           node --check tests/turso-stage.test.js
+          node --check integration/run-turso-stage.js
+          node --check tests/turso-stage-cli.test.js
           node --check tests/ui-javascript.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
@@ -91,7 +93,7 @@ jobs:
       - name: Ejecutar tests con cliente libSQL real y archivo local
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
-        run: node --test tests/libsql-real.test.js tests/wa-auth-store.test.js tests/wa-outbox.test.js tests/wa-dispatch.test.js tests/wa-inbox.test.js tests/wa-apply-proposal.test.js tests/wa-baileys-bridge.test.js tests/turso-stage.test.js
+        run: node --test tests/libsql-real.test.js tests/wa-auth-store.test.js tests/wa-outbox.test.js tests/wa-dispatch.test.js tests/wa-inbox.test.js tests/wa-apply-proposal.test.js tests/wa-baileys-bridge.test.js tests/turso-stage.test.js tests/turso-stage-cli.test.js
 
       - name: Ejecutar integracion HTTP V3 con Express y libSQL locales
         env:
