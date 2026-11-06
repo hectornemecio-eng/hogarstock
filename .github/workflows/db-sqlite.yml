@@ -80,6 +80,11 @@ jobs:
           node --check tests/turso-stage-cli.test.js
           node --check tests/v3-restore-drill.test.js
           node --check tests/ui-javascript.test.js
+          node --check integration/v3-compose-services.js
+          node --check integration/v3-production-app.js
+          node --check integration/v3-production-composition.js
+          node --check tests/integracion-candidata.test.js
+          node --check tests/v3-composition-real-smoke.test.js
 
       - name: Ejecutar pruebas aisladas SQLite y autorizacion
         run: node --test tests/db-sqlite.test.js tests/access.test.js tests/store.test.js tests/http-prototype.test.js tests/compras.test.js tests/conciliacion.test.js tests/comprador-v3-static.test.js tests/catalogo.test.js tests/ui-javascript.test.js tests/wa-coordinator.test.js tests/wa-inbound-baileys.test.js
@@ -104,6 +109,11 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
         run: node --test tests/v3-router.test.js tests/buyer-sessions.test.js tests/admin-v3.test.js tests/wa-inbox-http.test.js tests/v3-security-controls.test.js
+
+      - name: Verificar composicion V3 integrada con SQLite ficticio
+        env:
+          NODE_PATH: ${{ runner.temp }}/hogarstock-libsql-test/node_modules
+        run: node --test tests/integracion-candidata.test.js tests/v3-composition-real-smoke.test.js
 
       - name: Preparar navegador Chromium exclusivamente para E2E local
         run: |
