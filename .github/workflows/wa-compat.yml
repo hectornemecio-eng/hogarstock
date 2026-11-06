@@ -7,6 +7,7 @@ on:
     paths:
       - 'whatsapp/**'
       - 'tests/wa-baileys-compat.test.js'
+      - 'tests/wa-baileys-bridge-real.test.js'
       - '.github/workflows/wa-compat.yml'
   workflow_dispatch:
 
@@ -26,6 +27,9 @@ jobs:
         run: |
           node --check whatsapp/auth-store.js
           node --check tests/wa-baileys-compat.test.js
+          node --check whatsapp/baileys-bridge.js
+          node --check whatsapp/baileys-loader.js
+          node --check tests/wa-baileys-bridge-real.test.js
       - name: Instalar dependencias de prueba fuera de la aplicacion
         run: |
           mkdir -p "$RUNNER_TEMP/hogarstock-wa-test"
@@ -35,4 +39,4 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/hogarstock-wa-test/node_modules
           HOGARSTOCK_TEST_DEPS: ${{ runner.temp }}/hogarstock-wa-test
-        run: node --test tests/wa-baileys-compat.test.js
+        run: node --test tests/wa-baileys-compat.test.js tests/wa-baileys-bridge-real.test.js
