@@ -16,6 +16,13 @@ function validarRuta(dir) {
     throw new Error("V3_PERSISTENCIA_RUTA_ABSOLUTA_REQUERIDA");
   }
   const normal = path.resolve(dir);
+  const raizRepositorio = path.resolve(__dirname, "..");
+  const relativo = path.relative(raizRepositorio, normal);
+  if (!path.isAbsolute(relativo) &&
+      (relativo === "" ||
+       (relativo !== ".." && !relativo.startsWith(".." + path.sep)))) {
+    throw new Error("V3_PERSISTENCIA_DENTRO_REPOSITORIO");
+  }
   if (normal === path.parse(normal).root) {
     throw new Error("V3_PERSISTENCIA_RAIZ_PROHIBIDA");
   }
