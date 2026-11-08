@@ -4,6 +4,7 @@
 // No importa db.js ni reutiliza catálogo, compras o secretos de producción.
 // No contiene DROP, DELETE ni migraciones destructivas.
 
+const {randomBytes}=require("node:crypto");
 const {crearAlmacenCompras}=require("../compras/store.js");
 const {crearAlmacenSeguridad}=require("../security/store.js");
 const {crearSesionesComprador}=require("../security/buyer-sessions.js");
@@ -78,6 +79,7 @@ async function inicializarEnsayoV3({
  const antes=await inspeccionarBaseSoloLectura(cliente);
  if(!antes.vacia)throw new Error("STAGING_BASE_NO_VACIA_NO_MODIFICADA");
  // La creación y la carga de tres productos sintéticos se hacen en lote.
+ const comprobante=randomBytes(16).toString("hex");
  const sentencias=[
   "CREATE TABLE productos ("+
    "id INTEGER PRIMARY KEY AUTOINCREMENT,"+
@@ -86,6 +88,8 @@ async function inicializarEnsayoV3({
    sql:"INSERT INTO productos(nombre,categoria,agotado) VALUES(?,?,?)",
    args:[n,c,1],
   })),
+  "CREATE TABLE hogarstock_v3_stage_proof (id INTEGER PRIMARY KEY CHECK(id=1),host TEXT NOT NULL,proof_id TEXT NOT NULL)",
+  {sql:"INSERT INTO hogarstock_v3_stage_proof(id,host,proof_id) VALUES(1,?,?)",args:[destino.host,comprobante]},
  ];
  await cliente.batch(sentencias,"write");
  const modulos=await iniciarModulosV3({cliente,secretos});
@@ -96,7 +100,7 @@ async function inicializarEnsayoV3({
  }
  return Object.freeze({
   creado:true, productosFicticios:PRODUCTOS_FICTICIOS.length,
-  tablas:despues.tablas, modulos,
+  tablas:despues.tablas, comprobante, modulos,
  });
 }
 
