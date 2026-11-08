@@ -90,3 +90,39 @@ El verificador:
 **CI de evidencia:** `tests/v3-verify-staging-backup.test.js` contiene seis casos de verificación/restauración ficticia, hash falso, identidad errónea, archivo corrupto, directorio inseguro y parámetros inválidos. El workflow `v3-staging-smoke.yml` ejecutó **29/29** con Node 20.11.0 y **29/29** con Node 22 en run **42482030742**, commit `1daae58e13c2c6f93b409406f19f577b1f9e651b`; el workflow general run **42482030550** también pasó. No hubo conexión remota ni despliegue.
 
 **Barrera económica:** Render API permite consultar plan Free del servicio `hogarstock`, pero no las cuotas de instancias Free del workspace ni su facturación. Las 750 horas mensuales son compartidas y agotar el cupo suspende TODOS los servicios Free. No crear otro Render sin revisar Billing ni el riesgo para V2. El plan Turso Free es público, pero las cuotas/overages de la cuenta no se han comprobado.
+
+
+## Ampliación v3.54 — hosting alternativo con DNS explícito (2026-11-08)
+
+**Evidencia de código:** commit `c8c4803b0b330c7c94e899e0312db0fe6b4b9155`; workflow staging `42496038877`, **78/78** en Node 20.11.0 y **78/78** en Node 22; regresión general `42496038676` completada correctamente. Solo ensayos offline con SQLite ficticia.
+
+El perfil de origen remoto dispone ahora de **dos variables nuevas, obligatorias y privadas**:
+
+| Variable | Ejemplo puramente ilustrativo |
+|---|---|
+| `HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER` | `render`, `northflank` o `enzonic` |
+| `HOGARSTOCK_V3_REMOTE_STAGE_HOST` | Host exacto del futuro dominio de staging, sin esquema ni puerto |
+
+El validador exige coincidencia exacta entre el proveedor, el host declarado y el host de `HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN`, con `https://`, sin puerto, usuario, contraseña, ruta, parámetros ni fragmento. Solo permite nombres específicos de staging:
+
+- Render: `hogarstock-v3-stage.onrender.com` (solo ejemplo).
+- Northflank: `p01--hogarstock-v3-stage--aleatorio.region.code.run`; el nombre exacto se obtendrá del panel si se autoriza su creación.
+- Enzonic: `hogarstock-v3-stage.spain.free.enzonic.com` o `hogarstock-v3-stage.us.free.enzonic.com`, si el proveedor asigna realmente esos nombres.
+
+**No hay dominios ni cuentas creadas.** Un host aceptado sintácticamente no implica verificación de propiedad, seguridad operativa, disponibilidad ni aprobación de pago. Sigue prohibido usar credenciales de producción y las tres banderas de conexión, respaldo y escritura permanecen en `N` hasta autorización separada.
+
+**Actualización de la evaluación de proveedores:**
+
+- Northflank: la página de precios de 2026 declara Sandbox **sin tarjeta**, dos servicios, uno de base de datos y hasta 20 USD mensuales incluidos; su documentación de facturación accesible al mismo tiempo sigue diciendo que **todos** los usuarios deben añadir un método de pago para crear recursos. No hay prueba de límite duro de gasto. **No dar de alta recursos ni introducir tarjeta.**
+- Enzonic: `https://www.enzonic.com/nodejs` ofrece, según su propia publicidad, un servidor Node 22 de 512 MB, 50 % CPU, 10 GB SSD, sin tarjeta y sin suspensión por inactividad. Otra página oficial (`https://enzonic.com/es/web-hosting`) menciona **3,5 GB RAM** para el nivel gratis, una discrepancia comercial no resuelta. No se ha demostrado fiabilidad, capacidad real disponible, política de límites o soporte operativo. **Candidato bajo verificación, no aprobado**.
+- Render actual: Free hiberna tras 15 minutos sin tráfico entrante, comparte 750 horas mensuales por workspace, disco efímero. No crear un segundo servicio que pudiera consumir las horas de V2.
+
+**Próximo paso económico:** confirmar en cada proveedor, **sin tarjeta, pagos, recargas ni depósitos**, la cuota asignada por el panel y la política de agotamiento (si bloquea/suspende o genera deuda). Si no se puede garantizar ausencia total de cargos, no desplegar. Hasta entonces pueden seguir avanzando pruebas y auditorías locales.
+
+Fuentes oficiales verificadas:
+- https://northflank.com/pricing
+- https://northflank.com/docs/v1/application/billing/pricing-on-northflank
+- https://northflank.com/docs/v1/application/network/configure-ports
+- https://www.enzonic.com/nodejs
+- https://enzonic.com/es/web-hosting
+- https://render.com/docs/free
