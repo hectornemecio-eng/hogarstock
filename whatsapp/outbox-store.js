@@ -137,13 +137,15 @@ function crearRegistroWhatsApp({cliente,claveHex,reloj=Date.now}={}){
   const r=await cliente.execute({sql:"SELECT * FROM "+TABLA+" WHERE id=? LIMIT 1",args:[id]});
   return r.rows.length?meta(r.rows[0]):null;
  }
- async function registrarSolicitud({claveIdempotencia,telefono,mensaje,compraId=null}={}){
+ async function registrarSolicitudEnTransaccion({transaccion:tx,claveIdempotencia,telefono,mensaje,compraId=null}={}){
+  // Para componer atomicamente cierre de compra + registro OUTBOX.
+  // Solo el llamante propietario de la transaccion puede confirmar cambios.
+  if(!tx||typeof tx.execute!=="function")throw Error("WA_OUTBOX_TRANSACCION_REQUERIDA");
   exigirInit();
   const key=textoValido(claveIdempotencia,200,"WA_IDEMPOTENCIA_INVALIDA"),
    tel=telefonoValido(telefono),texto=textoValido(mensaje,4096,"WA_MENSAJE_INVALIDO"),
    compra=compraValida(compraId),dedupe=huella("dedupe",key),
    fingerprint=huella("contenido",JSON.stringify([compra,tel,texto]));
-  return escribir(cliente,async tx=>{
    const r=await tx.execute({sql:"SELECT * FROM "+TABLA+" WHERE dedupe_hmac=? LIMIT 1",args:[dedupe]});
    if(r.rows.length){
     const f=r.rows[0],actual=String(f.contenido_hmac);
@@ -163,7 +165,10 @@ function crearRegistroWhatsApp({cliente,claveHex,reloj=Date.now}={}){
    return {creada:true,id,compraId:compra,estado:"pendiente",creado:fecha,
     actualizado:fecha,revision:0,errorCodigo:null,aceptadoEn:null,
     entregadoEn:null,leidoEn:null};
-  });
+ }
+ async function registrarSolicitud(datos={}){
+  exigirInit();
+  return escribir(cliente,tx=>registrarSolicitudEnTransaccion({transaccion:tx,...datos}));
  }
  async function reclamarEnvio(id){
   exigirInit();operacionValida(id);
@@ -284,7 +289,7 @@ function crearRegistroWhatsApp({cliente,claveHex,reloj=Date.now}={}){
   });
   return r.rows.map(meta);
  }
- return Object.freeze({init,obtener,registrarSolicitud,reclamarEnvio,registrarResultado,
+ return Object.freeze({init,obtener,registrarSolicitud,registrarSolicitudEnTransaccion,reclamarEnvio,registrarResultado,
   registrarAcuse,recuperarIntentosInterrumpidos,listarPorCompra});
 }
 module.exports={crearRegistroWhatsApp};
