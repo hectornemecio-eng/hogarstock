@@ -28,6 +28,8 @@ function perfil(extra = {}) {
   return {
     HOGARSTOCK_V3_REMOTE_STAGE:"1",
     HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:origen,
+    HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"render",
+    HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.onrender.com",
     HOGARSTOCK_STAGING_TURSO_URL:"libsql://" + host,
     HOGARSTOCK_STAGING_TURSO_HOST:host,
     HOGARSTOCK_PRODUCTION_TURSO_HOST:"hogarstock-production.turso.io",
@@ -76,6 +78,69 @@ test("Rechaza origen de produccion, HTTP y host Render no separado",()=>{
       perfil({HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:url})
     ),/ORIGEN_/);
   }
+});
+test("Acepta alojamiento V3 aislado con DNS de proveedor y host exactos",()=>{
+  const destinos=[
+    {url:"https://hogarstock-v3-stage.onrender.com",tipo:"render",host:"hogarstock-v3-stage.onrender.com"},
+    {url:"https://web--hogarstock-v3-stage--abcd1234.code.run",tipo:"northflank",host:"web--hogarstock-v3-stage--abcd1234.code.run"},
+    {url:"https://p01--hogarstock-v3-stage--abcd1234.salvo.code.run",tipo:"northflank",host:"p01--hogarstock-v3-stage--abcd1234.salvo.code.run"},
+    {url:"https://hogarstock-v3-stage.spain.free.enzonic.com",tipo:"enzonic",host:"hogarstock-v3-stage.spain.free.enzonic.com"},
+    {url:"https://hogarstock-v3-stage.us.free.enzonic.com",tipo:"enzonic",host:"hogarstock-v3-stage.us.free.enzonic.com"},
+  ];
+  for(const d of destinos) {
+    const validado=validarPerfilRemoto(perfil({
+      HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:d.url,
+      HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:d.tipo,
+      HOGARSTOCK_V3_REMOTE_STAGE_HOST:d.host,
+    }));
+    assert.equal(validado.proveedor,d.tipo);
+    assert.equal(validado.hostWeb,d.host);
+    assert.equal(validado.permitirConexion,false);
+  }
+});
+test("Rechaza dominios ajenos, producción, hosts confusos y puertos",()=>{
+  for(const url of [
+    "https://hogarstock.onrender.com",
+    "https://hogarstock-v3-stage.onrender.com.evil.tld",
+    "https://evil--hogarstock-v3-stage--abc.code.run.evil.tld",
+    "https://web--hogarstock-v3-prod--abc.code.run",
+    "https://hogarstock-v3-stage.spain.free.enzonic.com.evil.tld",
+    "https://hogarstock-v3-stage.spain.free.enzonic.com:8443",
+    "https://hogarstock-v3-stage.northflank.app",
+    "https://hogarstock-v3-stage.spain.free.enzonic.com@evil.tld",
+  ]) {
+    assert.throws(()=>validarPerfilRemoto(perfil({
+      HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:url,
+    })),/V3_REMOTO_ORIGEN_/);
+  }
+});
+test("Proveedor y host deben coincidir literalmente con la configuración auditada",()=>{
+  for(const extra of [
+    {HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic"},
+    {HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"desconocido"},
+    {HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock.onrender.com"},
+    {HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.onrender.com.evil.tld"},
+  ]) {
+    assert.throws(()=>validarPerfilRemoto(perfil(extra)),
+      /V3_REMOTO_(PROVEEDOR|HOST)_NO_COINCIDE/);
+  }
+});
+test("En proveedores alternativos se mantiene el bloqueo de red por defecto",async()=>{
+  let llamadas=0;
+  for(const extra of [
+    {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://p01--hogarstock-v3-stage--abc.salvo.code.run",
+     HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"northflank",
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"p01--hogarstock-v3-stage--abc.salvo.code.run"},
+    {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://hogarstock-v3-stage.spain.free.enzonic.com",
+     HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic",
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com"},
+  ]) {
+    await assert.rejects(iniciarStagingRemoto({
+      entorno:perfil(extra),
+      fabricaCliente:()=>{llamadas++;throw Error("no");},
+    }),/V3_REMOTO_RED_BLOQUEADA/);
+  }
+  assert.equal(llamadas,0);
 });
 test("La identidad de Turso debe ser de staging y distinta de produccion",()=>{
   for(const values of [
