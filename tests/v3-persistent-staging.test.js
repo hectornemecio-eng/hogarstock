@@ -34,6 +34,8 @@ test("Proteccion: sin ruta absoluta, raiz o enlace simbolico no opera", () => {
   assert.throws(() => validarRuta("data"), /RUTA_ABSOLUTA_REQUERIDA/);
   assert.throws(() => validarRuta(path.parse(process.cwd()).root),
     /RAIZ_PROHIBIDA/);
+  assert.throws(() => validarRuta(path.join(__dirname, "..", "carpeta-staging")),
+    /DENTRO_REPOSITORIO/);
 });
 test("Proteccion: no se abre staging con credenciales remotas o WhatsApp", async () => {
   const destino = path.join(carpeta(), "sin-crear");
