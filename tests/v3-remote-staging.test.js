@@ -136,7 +136,7 @@ test("Decisión vigente: Render permitido y otros proveedores pausados por defec
     {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://hogarstock-v3-stage.spain.free.enzonic.com",
      HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic",
      HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com",
-     HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S"},
+    },
   ]) {
     assert.throws(()=>validarPerfilRemoto(perfil(perfilHost)),
       /V3_REMOTO_ALTERNATIVAS_PAUSADAS/);
@@ -163,7 +163,8 @@ test("En proveedores alternativos se mantiene el bloqueo de red por defecto",asy
      HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S"},
     {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://hogarstock-v3-stage.spain.free.enzonic.com",
      HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic",
-     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com"},
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com",
+     HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S"},
   ]) {
     await assert.rejects(iniciarStagingRemoto({
       entorno:perfil(extra),
