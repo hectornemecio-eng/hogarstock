@@ -10,3 +10,9 @@ auth_info_baileys/
 
 # Binarios locales
 bin/
+
+# Staging V3: bases y secretos locales nunca al repositorio publico
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.hogarstock-v3-staging.json
