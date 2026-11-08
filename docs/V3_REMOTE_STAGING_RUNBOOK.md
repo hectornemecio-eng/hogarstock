@@ -1,5 +1,12 @@
 # HogarStock V3 — preparación de staging remoto (sin producción)
 
+## DECISIÓN VIGENTE: RENDER (08/11/2026)
+
+> El usuario ha decidido **continuar con Render**. Northflank, Enzonic y otros proveedores quedan **en pausa** hasta nueva instrucción explícita. Los análisis históricos de alternativas que aparecen a continuación no son una recomendación de migración ni autorizan nuevas cuentas, recursos, tarjetas o cargos. El alojamiento V2 en Render, la rama `main` y sus datos siguen intactos. Para el plan operativo vigente, consultar `docs/V3_RENDER_CONTINUIDAD_DECISION_2026-11-08.md`.
+
+---
+
+
 Fecha: 2026-11-08. Rama: `seguridad-pruebas-2026-11-05`.
 
 ## Estado confirmado
