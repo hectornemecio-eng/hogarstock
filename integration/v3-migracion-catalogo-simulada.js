@@ -5,6 +5,9 @@
 // ni migra credenciales Baileys, contactos, sesiones o supuestos historiales.
 // Una llamada real requiere guardas de entorno y origen/destino independientes.
 const { createHash } = require("node:crypto");
+const { realpathSync, statSync } = require("node:fs");
+const { basename, dirname, resolve, sep } = require("node:path");
+const { tmpdir } = require("node:os");
 
 const REQUERIDAS = Object.freeze(["id", "nombre", "categoria", "agotado"]);
 const TABLAS = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
@@ -61,6 +64,44 @@ function validarEntorno(entorno) {
   }
 }
 
+
+// Se verifica la identidad FISICA de los dos clientes antes de cualquier
+// INSERT o CREATE. Objetos libsql diferentes pueden apuntar al mismo fichero.
+// Solo se admiten dos SQLite de un ensayo local con nombres controlados.
+async function verificarFuentesFicticias(origen,destino) {
+  async function ruta(client,filename) {
+    const r=await client.execute("PRAGMA database_list");
+    const main=r?.rows?.find(x=>String(x.name)==="main");
+    if (typeof main?.file!=="string" || !main.file.trim()) {
+      throw Error("V3_MIGRACION_NO_ES_BASE_LOCAL");
+    }
+    let pathname,stats;
+    try {
+      pathname=realpathSync(String(main.file));
+      stats=statSync(pathname);
+    } catch (_) {
+      throw Error("V3_MIGRACION_RUTA_NO_VERIFICADA");
+    }
+    if (!stats.isFile() || basename(pathname)!==filename) {
+      throw Error("V3_MIGRACION_RUTA_NO_AUTORIZADA");
+    }
+    return {pathname,stats};
+  }
+  const a=await ruta(origen,"source-v2.sqlite");
+  const b=await ruta(destino,"destino-v3.sqlite");
+  const carpeta=dirname(a.pathname);
+  const base=basename(carpeta);
+  const temporal=realpathSync(tmpdir());
+  if (carpeta!==dirname(b.pathname) ||
+      !/^hs-v2-v3-mig-fake-[A-Za-z0-9_-]+$/.test(base) ||
+      !carpeta.startsWith(temporal+sep) ||
+      a.pathname===b.pathname ||
+      (a.stats.dev===b.stats.dev && a.stats.ino===b.stats.ino)) {
+    throw Error("V3_MIGRACION_DESTINO_FISICO_NO_AISLADO");
+  }
+  return Object.freeze({local:true,diferentes:true});
+}
+
 async function leerCatalogoV2(origen) {
   validarCliente(origen,"ORIGEN");
   const tablas=nombresDeTablas(await origen.execute(TABLAS));
@@ -103,6 +144,7 @@ async function simularMigracionCatalogo({
   if (origen===destino || typeof destino.batch!=="function") {
     throw Error("V3_MIGRACION_DESTINO_NO_SEPARADO");
   }
+  await verificarFuentesFicticias(origen,destino);
   const datos=await leerCatalogoV2(origen);
   if (!/^[a-f0-9]{64}$/.test(huellaEsperada||"") ||
       datos.reporte.huellaSha256!==huellaEsperada) {
