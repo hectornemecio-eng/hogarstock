@@ -12,7 +12,9 @@ on:
       - tests/v3-persistent-staging.test.js
       - integration/turso-stage-bootstrap.js
       - integration/v3-remote-staging-entrypoint.js
-      - tests/v3-remote-staging.test.js
+      - tests/v3-remote-staging.test.js tests/v3-verify-staging-backup.test.js
+      - integration/v3-verify-staging-backup.js
+      - tests/v3-verify-staging-backup.test.js
       - .github/workflows/v3-staging-smoke.yml
   workflow_dispatch:
 
@@ -57,6 +59,8 @@ jobs:
           node --check integration/turso-stage-bootstrap.js
           node --check integration/v3-remote-staging-entrypoint.js
           node --check tests/v3-remote-staging.test.js
+          node --check integration/v3-verify-staging-backup.js
+          node --check tests/v3-verify-staging-backup.test.js
 
       - name: Instalar dependencias fijadas sin scripts de terceros
         run: npm ci --ignore-scripts --no-audit --no-fund
