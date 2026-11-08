@@ -23,7 +23,8 @@ const { crearAplicadorWhatsApp } = require("../whatsapp/apply-proposal.js");
 
 const CLAVE_DEMO = "HogarStock-V3-Clave-FICTICIA-Solo-Pruebas-2026!";
 
-async function crearServidorAislado({ certPath, keyPath } = {}) {
+async function crearServidorAislado({ certPath, keyPath, habilitarReposicion = false } = {}) {
+  if (typeof habilitarReposicion !== "boolean") throw new TypeError("V3_LAB_REPOSICION_OPCION_INVALIDA");
   if (process.env.HOGARSTOCK_V3_SANDBOX !== "1") {
     throw new Error("AISLAMIENTO_REQUERIDO: establecer HOGARSTOCK_V3_SANDBOX=1");
   }
@@ -71,6 +72,27 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     const aplicadorWhatsApp=crearAplicadorWhatsApp({cliente});
     await aplicadorWhatsApp.init();
 
+    // OPT-IN: solo para pruebas de interfaz con SQLite ficticia. No habilitar
+    // mediante env o en el lanzador normal: exige llamada explicita del test.
+    let reposicionInventario = null;
+    if (habilitarReposicion) {
+      const { crearRepositorInventarioV3 } =
+        require("../compras/v3-reposicion-sandbox.js");
+      reposicionInventario = crearRepositorInventarioV3({
+        cliente,
+        entorno: {
+          HOGARSTOCK_V3_SANDBOX: process.env.HOGARSTOCK_V3_SANDBOX,
+          HOGARSTOCK_V3_REPOSICION_LAB: "1",
+          TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
+          TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
+          HOGARSTOCK_STAGING_TURSO_URL: process.env.HOGARSTOCK_STAGING_TURSO_URL,
+          HOGARSTOCK_V3_REMOTE_STAGE: process.env.HOGARSTOCK_V3_REMOTE_STAGE,
+          HOGARSTOCK_V3_WHATSAPP_LIVE: process.env.HOGARSTOCK_V3_WHATSAPP_LIVE,
+        },
+      });
+      await reposicionInventario.init();
+    }
+
     const app = express();
     app.disable("x-powered-by");
     app.get("/health", (_req, res) => res.status(200).json({
@@ -115,6 +137,7 @@ async function crearServidorAislado({ certPath, keyPath } = {}) {
     app.use("/api/v3", crearRouterV3({
       acceso, compras: almacenCompras, catalogo, conciliador,
       sesionesComprador, bandejaWhatsApp, aplicadorWhatsApp, origen,
+      reposicionInventario,
     }));
     app.use((_req, res) => res.status(404).json({ error: "RUTA_INEXISTENTE" }));
 
