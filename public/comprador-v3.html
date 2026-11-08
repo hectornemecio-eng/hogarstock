@@ -36,6 +36,10 @@
       font:inherit; font-weight:650; cursor:pointer; padding:13px 17px; }
     button:disabled { opacity:.45; cursor:not-allowed; }
     button.secundario { background:#e9f3ef; color:#245349; }
+    a.accion { display:inline-block; border-radius:10px; padding:13px 17px; background:var(--verde); color:white; font-weight:650; text-decoration:none; }
+    a.accion:focus-visible { outline:3px solid #ffbd59; outline-offset:2px; }
+    textarea { width:100%; padding:12px; border:1px solid var(--borde); border-radius:10px; font:inherit; resize:vertical; min-height:125px; }
+    textarea:focus-visible { outline:3px solid #ffbd59; outline-offset:2px; }
     #mensaje { font-weight:600; min-height:20px; }
     #mensaje.error { color:#a22828; }
     [hidden] { display:none!important; }
@@ -67,6 +71,17 @@
       <button id="finalizar" type="button" disabled>Finalizar</button></div>
     <div class="fila" style="margin-top:16px"><span class="muted">Sesión vinculada únicamente a esta compra.</span>
       <button class="secundario" id="salir" type="button">Cerrar acceso</button></div>
+  </section>
+  <section id="compartirPanel" hidden>
+    <h2>Comunicar el resultado por WhatsApp</h2>
+    <p class="muted">El resumen se genera de esta compra finalizada, sin invitaciones ni contraseñas. Solo se prepara el mensaje: debes elegir el contacto y pulsar Enviar en WhatsApp.</p>
+    <label for="resumenCompartir">Resumen para enviar</label>
+    <textarea id="resumenCompartir" readonly aria-label="Resumen final para WhatsApp"></textarea>
+    <div class="fila" style="margin-top:12px">
+      <a id="abrirWhatsApp" class="accion" target="_blank" rel="noopener noreferrer" href="#" hidden>Preparar mensaje en WhatsApp</a>
+      <button class="secundario" id="copiarResumen" type="button">Copiar resumen</button>
+    </div>
+    <p id="avisoCompartir" class="muted" role="status">No se envía automáticamente.</p>
   </section>
 </main>
 <footer>HogarStock V3 · Versión de desarrollo · No disponible en producción</footer>
@@ -123,6 +138,55 @@
     if (clase) el.className = clase;
     return el;
   }
+  function prepararResumenFinal(c) {
+    if (!c || c.estado !== "finalizada" || !Array.isArray(c.items)) return "";
+    const seguros = x => String(x).replace(/[\\u0000-\\u001f\\u007f]/g," ").trim();
+    const faltan=c.items.filter(x=>x.estado!=="comprado");
+    const lineas=[
+      "HogarStock · Compra #"+c.id+" finalizada.",
+      faltan.length===0
+        ? "Compra completa: todos los productos comprados."
+        : "Compra finalizada con "+faltan.length+" producto(s) pendiente(s):",
+    ];
+    for (const item of faltan) {
+      lineas.push("- "+seguros(item.nombre)+
+        (item.estado==="no_disponible"?" (no disponible)":" (pendiente)"));
+    }
+    lineas.push("Comprados: "+c.resumen.comprados+" de "+c.resumen.total+".");
+    return lineas.join("\\n");
+  }
+  function actualizarCompartir() {
+    const disponible=compra?.estado==="finalizada";
+    $("compartirPanel").hidden=!disponible;
+    if (!disponible) {
+      $("resumenCompartir").value="";
+      $("abrirWhatsApp").hidden=true;
+      $("abrirWhatsApp").removeAttribute("href");
+      return;
+    }
+    const texto=prepararResumenFinal(compra);
+    $("resumenCompartir").value=texto;
+    const url="https://wa.me/?text="+encodeURIComponent(texto);
+    const util=url.length<=1900;
+    $("abrirWhatsApp").hidden=!util;
+    if (util) $("abrirWhatsApp").href=url;
+    else $("abrirWhatsApp").removeAttribute("href");
+    $("avisoCompartir").textContent=util
+      ? "El envío es manual. Ninguna cuenta de WhatsApp se conecta a HogarStock."
+      : "El resumen es largo. Cópialo y pégalo manualmente en WhatsApp.";
+  }
+  $("copiarResumen").addEventListener("click",async()=>{
+    if (!compra || compra.estado!=="finalizada") return;
+    try {
+      if (!navigator.clipboard?.writeText) throw Error("COPIA_NO_DISPONIBLE");
+      await navigator.clipboard.writeText($("resumenCompartir").value);
+      $("avisoCompartir").textContent="Resumen copiado. Pégalo en el chat de WhatsApp que elijas.";
+    } catch (_) {
+      $("resumenCompartir").focus();
+      $("resumenCompartir").select();
+      $("avisoCompartir").textContent="Selecciona el texto y cópialo manualmente.";
+    }
+  });
   function renderizar() {
     if (!compra) return;
     const cerrado = compra.estado !== "abierta";
@@ -135,6 +199,7 @@
     $("barra").style.width = porcentaje + "%";
     $("progreso").setAttribute("aria-valuenow", String(porcentaje));
     $("finalizar").disabled = cerrado || ocupada;
+    actualizarCompartir();
     const lista = $("lista");
     lista.replaceChildren();
     for (const item of compra.items) {
@@ -204,7 +269,7 @@
     finally { ocupada = false; renderizar(); }
   });
   $("salir").addEventListener("click", async () => {
-    try { await peticion(base + "/salir", "POST", {}); compra = null; $("lista").replaceChildren(); mensaje("Acceso cerrado."); $("finalizar").disabled = true; }
+    try { await peticion(base + "/salir", "POST", {}); compra = null; $("lista").replaceChildren(); $("compartirPanel").hidden=true; $("resumenCompartir").value=""; $("abrirWhatsApp").removeAttribute("href"); mensaje("Acceso cerrado."); $("finalizar").disabled = true; }
     catch (error) { mensaje("No se pudo cerrar acceso: " + error.message, true); }
   });
   (async () => {
