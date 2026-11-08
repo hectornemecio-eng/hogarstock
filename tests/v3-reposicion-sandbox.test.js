@@ -64,7 +64,7 @@ test("Compra abierta no permite siquiera informe de reposicion",async t=>{
 });
 test("Compra finalizada completa: solo despues de autorizacion limpia el catalogo",async t=>{
   const e=await escenario(t);
-  await Promise.all([e.marcar(1),e.marcar(2),e.marcar(3)]);
+  await e.marcar(1); await e.marcar(2); await e.marcar(3);
   await e.compras.finalizarCompra({compraId:e.compraId});
   const informe=await e.rep.preparar({compraId:e.compraId});
   assert.equal(informe.soloLectura,true);
