@@ -54,7 +54,7 @@ function validarOrigenConfigurado(origen) {
   return origen;
 }
 
-function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, bandejaWhatsApp = null, aplicadorWhatsApp = null, origen, reloj = Date.now }) {
+function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesionesComprador = null, bandejaWhatsApp = null, aplicadorWhatsApp = null, reposicionInventario = null, origen, reloj = Date.now }) {
   const requerido = [
     [acceso, ["iniciarSesionAdmin", "autorizarAdmin", "cerrarSesionAdmin",
       "emitirPermisoCompra", "autorizarCompra"]],
@@ -80,6 +80,10 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
   if (aplicadorWhatsApp && ["aplicar", "listarPorCompra"].some(n =>
     typeof aplicadorWhatsApp[n] !== "function")) {
     throw new TypeError("Aplicador WhatsApp incompleto");
+  }
+  if (reposicionInventario && ["preparar","aplicar"].some(n =>
+    typeof reposicionInventario[n] !== "function")) {
+    throw new TypeError("Servicio de reposicion incompleto");
   }
   validarOrigenConfigurado(origen);
   if (typeof reloj !== "function") throw new TypeError("Reloj invalido");
@@ -118,6 +122,12 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
         ITEM_NO_ENCONTRADO: 404,
         COMPRA_NO_ENCONTRADA_O_SIN_ITEMS: 404,
         COMPRA_NO_FINALIZADA: 409,
+        V3_REPOSICION_COMPRA_INEXISTENTE: 404,
+        V3_REPOSICION_COMPRA_NO_FINALIZADA: 409,
+        V3_REPOSICION_DESACTUALIZADA: 409,
+        V3_REPOSICION_CONFLICTO_ATOMICO: 409,
+        V3_REPOSICION_CONFIRMACION_REQUERIDA: 400,
+        V3_REPOSICION_HUELLA_INVALIDA: 400,
         COMPRA_CERRADA: 409,
         CONFLICTO_VERSION: 409,
         PRODUCTO_NO_MARCADO_COMO_FALTANTE: 409,
@@ -435,6 +445,32 @@ function crearRouterV3({ acceso, compras, conciliador, catalogo = null, sesiones
       return res.json({ informe });
     })
   );
+
+  // Integracion OPCIONAL y solo con servicio de ensayo inyectado.
+  // No se monta en V2 ni en el arranque V3 actual.
+  if (reposicionInventario) {
+    router.get("/admin/compras/:compraId/reposicion", exigirAdmin,
+      (req,res)=>ejecutar(req,res,async()=>{
+        const compraId=enteroPositivo(req.params.compraId);
+        if (compraId===null) return res.status(400).json({error:"ID_COMPRA_INVALIDO"});
+        const informe=await reposicionInventario.preparar({compraId});
+        return res.json({informe});
+      })
+    );
+    router.post("/admin/compras/:compraId/reposicion/aplicar", exigirAdmin,
+      (req,res)=>ejecutar(req,res,async()=>{
+        const compraId=enteroPositivo(req.params.compraId);
+        if (compraId===null) return res.status(400).json({error:"ID_COMPRA_INVALIDO"});
+        if (req.body?.confirmacion!==true) {
+          return res.status(400).json({error:"CONFIRMACION_REQUERIDA"});
+        }
+        const r=await reposicionInventario.aplicar({
+          compraId,confirmacion:true,huellaEsperada:req.body?.huellaEsperada,
+        });
+        return res.json({ok:true,resultado:r});
+      })
+    );
+  }
 
   if (sesionesComprador) {
     router.post("/compras/:compraId/activar", (req, res) =>
