@@ -339,7 +339,44 @@ for(const linea of datos.informe.lineas){
 const fila=node("div",undefined,"product");
 const informacion=node("div",undefined,"product-name");informacion.append(node("strong",linea.nombreEnCompra),node("small",linea.codigo+" · "+linea.accionSugerida));fila.append(informacion);contenedor.append(fila);
 }
-status("Informe consultado. No se ha modificado el inventario.");
+// La reposición sólo está disponible si un servidor de laboratorio
+// ha inyectado expresamente el servicio. Un 404 se trata como desactivado.
+try {
+  const informe=await api("/admin/compras/"+state.compraId+"/reposicion");
+  const rep=informe.informe;
+  contenedor.append(node("h3","Reposición del catálogo · aprobación administrativa"));
+  contenedor.append(node("p",rep.resumen.reponibles+
+    " productos reponibles · "+rep.resumen.omitidos+
+    " protegidos o sin cambios.","muted"));
+  for(const fila of rep.lineas){
+    contenedor.append(node("p","Producto #"+fila.productoId+
+      " · "+fila.decision,"muted"));
+  }
+  if(rep.resumen.reponibles>0) {
+    contenedor.append(button("Confirmar reposición de "+
+      rep.resumen.reponibles+" producto(s)",()=>run(async()=>{
+      if(!window.confirm("Se actualizarán los productos comprados y elegibles. "+
+        "¿Confirmas la reposición en este entorno de pruebas?"))return;
+      const aplicado=await api("/admin/compras/"+state.compraId+
+        "/reposicion/aplicar","POST",{
+          confirmacion:true,huellaEsperada:rep.huella,
+        });
+      await cargar();
+      await mostrarCompra(state.compraId,{conservarPaneles:true});
+      contenedor.replaceChildren();
+      contenedor.append(node("p","Reposición registrada: "+
+        aplicado.resultado.numeroAplicados+" producto(s)."));
+      status("Inventario de ensayo actualizado; revisa el catálogo.");
+    }),"secondary"));
+  }
+  status("Informe consultado. Solo la aprobación explícita cambia el inventario.");
+} catch(error) {
+  if(error.status===404){
+    contenedor.append(node("p",
+      "Reposición desactivada en este entorno; informe de solo lectura.","muted"));
+    status("Informe consultado. Reposición no habilitada.");
+  } else { throw error; }
+}
 }));
 (async()=>{try{const sesion=await api("/admin/sesion");if(sesion.autenticado){showApp(true);await cargar();status("Sesión recuperada.");}else{showApp(false);status("Acceso administrativo requerido.");}}catch(e){showApp(false);status("Inicia sesión para continuar.");}})();
 })();
