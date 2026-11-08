@@ -36,7 +36,9 @@ Se ha añadido al router V3 una **integración opcional** `reposicionInventario`
 6. Si cambia el inventario o aparece otra compra después de preparar el informe, la huella queda obsoleta y se aborta.
 7. Si falla el asiento de bitácora, la transacción también revierte el cambio en `productos.agotado`.
 
-**Límite conocido:** el modelo actual de `productos` no dispone de versión monotónica. Un cambio ABA (`agotado=1 → 0 → 1`) entre lectura y aprobación, antes de una primera conciliación, puede mantener la misma fotografía y no ser detectable. Antes de habilitar conciliación real, se recomienda versión de producto o evento de necesidad y control de concurrencia exhaustivo. La herramienta no debe presentarse como seguridad de producción completa.
+**Control ABA implementado (v3.51):** en laboratorio, el módulo mantiene `hogarstock_productos_version_v3` y tres triggers sobre `productos` (inserción, borrado y actualización de estado/nombre/categoría). Cada evento relevante incrementa la versión del producto y ésta participa en la huella de aprobación. Así, una secuencia `agotado=1 → 0 → 1` queda detectada, aunque el estado final coincida con el inicial. La versión se almacena fuera de la tabla histórica `productos` y persiste entre inicializaciones. Su aplicación a datos reales todavía requiere migración y auditoría específicas; esta validación es únicamente de laboratorio.
+
+**Interfaz administrativa opcional (v3.51):** `public/admin-v3.html` lee el informe existente, consulta condicionalmente `/admin/compras/:id/reposicion` y, si el servicio está inyectado, muestra candidatos y un botón de confirmación que envía `confirmacion:true` y la huella a `POST /admin/compras/:id/reposicion/aplicar`. Si la ruta devuelve 404, la pantalla mantiene el informe de solo lectura. El código usa `textContent` y no incorpora HTML arbitrario de datos de productos. Las pruebas de UI actuales verifican sintaxis y controles presentes en el código; **aún falta un E2E visual con navegador que ejercite esta operación**.
 
 ## Pruebas y evidencia
 
@@ -63,3 +65,20 @@ Estos ensayos usan SQLite ficticia y HTTP loopback; **no** verifican Turso real,
 4. Validar migración/reversión y seguridad de sesiones WhatsApp antes de cualquier cambio en V2.
 
 **Producción V2 permanece sin cambios.**
+
+## Hito adicional v3.51 — evidencia de versionado e interfaz (2026-11-08)
+
+- `compras/v3-reposicion-sandbox.js`: tabla de versiones y triggers; detección ABA, cambios directos, borrado/reinserción y persistencia.
+- `tests/v3-reposicion-sandbox.test.js`: 17 casos, incluidos cuatro adicionales de concurrencia.
+- `public/admin-v3.html`: aprobación administrativa opcional, bloqueada si el endpoint no existe, y confirmación del operador.
+- `tests/v3-reposicion-ui.test.js`: 3 verificaciones de sintaxis/control (no prueban visualmente la experiencia).
+- `tests/v3-reposicion-http-lab.test.js`: 4 casos reales HTTP de autenticación, origen y aplicación.
+- En conjunto, el workflow de staging contiene 74 casos distintos: Node 20.11.0 **74/74**, Node 22 **74/74**, 0 fallos.
+- Evidencia: https://github.com/hectornemecio-eng/hogarstock/actions/runs/42484916313 ; commit de código `a9a73f38a883a43397c91fb6c9f8633ccef3ea2d`.
+
+### Estado de preparación productiva
+
+**Validado en laboratorio:** catálogo V3, compras, respuestas simuladas, cierre y aviso en bandeja persistente, conciliación transaccional, versión anti-ABA, seguridad HTTP opcional, backups SQLite ficticios.  
+**Aún sin validar:** flujo de extremo a extremo con WhatsApp real, tokens/sesiones reales de Baileys V3, staging Render/Turso y backup remoto restaurado, migración desde V2, despliegue reversible y gastos/cupos de la cuenta.  
+**Regla:** no publicar V3 como funcional ni dar porcentajes de completitud de producción como métricas auditadas. Los números de pruebas describen solo la cobertura del entorno probado.
+
