@@ -36,10 +36,29 @@ function validarPerfilRemoto(entorno = {}) {
   const origen = entorno.HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN;
   try { validarOrigen(origen); }
   catch (_) { throw new Error("V3_REMOTO_ORIGEN_INVALIDO"); }
-  const hostWeb = new URL(origen).hostname.toLowerCase();
-  if (!/^hogarstock(?:-[a-z0-9]+)*-(?:stage|staging)(?:-[a-z0-9]+)*\.onrender\.com$/.test(hostWeb) ||
-      origen === "https://hogarstock.onrender.com") {
+  const urlPublica = new URL(origen);
+  const hostWeb = urlPublica.hostname.toLowerCase();
+  // Aislamiento estricto: solo DNS publicos de un servicio V3 de ensayo.
+  // No se aceptan comodines arbitrarios, dominios propios ni puertos publicos
+  // hasta disponer de una auditoria de TLS/ingress independiente.
+  const patrones = Object.freeze({
+    render: /^hogarstock(?:-[a-z0-9]+)*-(?:stage|staging)(?:-[a-z0-9]+)*\.onrender\.com$/,
+    northflank: /^[a-z][a-z0-9-]{0,19}--hogarstock-v3-(?:stage|staging)(?:-[a-z0-9]+)*--[a-z0-9-]+(?:\.[a-z0-9-]+)?\.code\.run$/,
+    enzonic: /^hogarstock-v3-(?:stage|staging)(?:-[a-z0-9]+)*\.(?:spain|us)\.free\.enzonic\.com$/,
+  });
+  const proveedor = Object.entries(patrones).find(([, patron]) =>
+    patron.test(hostWeb))?.[0];
+  if (!proveedor || urlPublica.port !== "" ||
+      hostWeb === "hogarstock.onrender.com") {
     throw new Error("V3_REMOTO_ORIGEN_NO_AISLADO");
+  }
+  // La seleccion del proveedor es explicita, para evitar permitir un dominio
+  // distinto del que el operador cree haber auditado.
+  if (entorno.HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER !== proveedor) {
+    throw new Error("V3_REMOTO_PROVEEDOR_NO_COINCIDE");
+  }
+  if (entorno.HOGARSTOCK_V3_REMOTE_STAGE_HOST !== hostWeb) {
+    throw new Error("V3_REMOTO_HOST_NO_COINCIDE");
   }
 
   const bd = {
@@ -85,7 +104,7 @@ function validarPerfilRemoto(entorno = {}) {
     throw new Error("V3_REMOTO_PUERTO_INVALIDO");
   }
   return Object.freeze({
-    origen, hostWeb, puerto: Number(puertoStr),
+    origen, hostWeb, proveedor, puerto: Number(puertoStr),
     hostBase: identidad.host,
     url: bd.url, authToken: bd.authToken,
     adminHash, hmac, comprobante,
