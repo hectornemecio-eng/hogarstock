@@ -52,6 +52,13 @@ function validarPerfilRemoto(entorno = {}) {
       hostWeb === "hogarstock.onrender.com") {
     throw new Error("V3_REMOTO_ORIGEN_NO_AISLADO");
   }
+  // Decisión vigente del usuario: seguir solo con Render.
+  // Conservar soporte experimental para otros proveedores, pero inactivo
+  // salvo autorización futura explícita. No afecta al servicio Render V2.
+  if (proveedor !== "render" &&
+      entorno.HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER !== "S") {
+    throw new Error("V3_REMOTO_ALTERNATIVAS_PAUSADAS");
+  }
   // La seleccion del proveedor es explicita, para evitar permitir un dominio
   // distinto del que el operador cree haber auditado.
   if (entorno.HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER !== proveedor) {
