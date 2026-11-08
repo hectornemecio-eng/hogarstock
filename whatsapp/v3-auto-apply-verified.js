@@ -5,12 +5,16 @@
 // OFF por defecto y únicamente habilitable en sandbox con datos ficticios.
 // No emite WhatsApp, no finaliza compras ni cambia productos.agotado.
 function crearProcesadorRespuestasV3({
-  bandeja, compras, aplicador, modo = "revision_manual", entorno = {},
+  bandeja, compras, aplicador, notificarCierre = null,
+  modo = "revision_manual", entorno = {},
 } = {}) {
   if (!bandeja || typeof bandeja.recibir !== "function" ||
       !compras || typeof compras.obtenerCompra !== "function" ||
       !aplicador || typeof aplicador.aplicar !== "function") {
     throw new TypeError("WA_AUTO_APPLY_DEPENDENCIAS_INVALIDAS");
+  }
+  if (notificarCierre !== null && typeof notificarCierre !== "function") {
+    throw new TypeError("WA_AUTO_CIERRE_CALLBACK_INVALIDO");
   }
   if (!["revision_manual", "auto_comprado"].includes(modo)) {
     throw new TypeError("WA_AUTO_APPLY_MODO_INVALIDO");
@@ -68,6 +72,22 @@ function crearProcesadorRespuestasV3({
       const nueva = await compras.obtenerCompra({ compraId: propuesta.compraId });
       const todosComprados = nueva?.resumen?.total > 0 &&
         nueva.resumen.comprados === nueva.resumen.total;
+      let cierre = "no_solicitado";
+      if (todosComprados && resultado.cambiado && notificarCierre) {
+        try {
+          const respuestaCierre = await notificarCierre({
+            compraId: propuesta.compraId,
+            telefono: entrada.telefono,
+          });
+          cierre = respuestaCierre?.cerrada === true
+            ? "compra_cerrada_outbox_registrado"
+            : "pendiente_verificacion";
+        } catch (_) {
+          // Aplicacion del item ya confirmada. No revertirla ni ocultar
+          // que el cierre requiere un reintento administrativo explicito.
+          cierre = "pendiente_verificacion";
+        }
+      }
       return Object.freeze({
         estado: "aplicado_automatico",
         aplicado: true,
@@ -75,8 +95,8 @@ function crearProcesadorRespuestasV3({
         compraId: propuesta.compraId,
         itemId: propuesta.itemId,
         todosComprados: Boolean(todosComprados),
-        // Únicamente una señal interna: NO finaliza ni envía confirmación.
         requiereNotificacion: Boolean(todosComprados),
+        cierre,
       });
     } catch (_) {
       // Dejar propuesta pendiente. Ni reintentar a ciegas ni exponer SQL,
