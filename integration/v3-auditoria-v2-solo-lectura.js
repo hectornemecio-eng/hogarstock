@@ -67,17 +67,18 @@ async function auditarV2SoloLectura(cliente,{maxProductos=10000}={}) {
       idsDistintos>total||idsDistintos+idsInvalidos<total) {
     throw Error("V2_AUDITORIA_CONTEOS_INCONSISTENTES");
   }
+  const hayTablasV3=names.some(x=>
+    x.startsWith("hogarstock_")&&x.endsWith("_v3"));
   return Object.freeze({
-    esquema:"PRODUCTOS_V2_COMPATIBLE",
-    compatible:estadosInvalidos===0&&textosInvalidos===0&&
+    esquema:hayTablasV3?"V3_PREEXISTENTE_REVISAR":"PRODUCTOS_V2_COMPATIBLE",
+    compatible:!hayTablasV3&&estadosInvalidos===0&&textosInvalidos===0&&
       idsInvalidos===0&&idsDistintos===total,
     catalogo:Object.freeze({total,agotados,disponibles,
       estadosInvalidos,textosInvalidos,idsDistintos,idsInvalidos}),
     // No se leen filas ni columnas de estas tablas.
     hayTablasAuthBaileys: names.some(x=>
       ["baileys_auth","baileys_auth_v2"].includes(x)),
-    hayTablasV3: names.some(x=>
-      x.startsWith("hogarstock_")&&x.endsWith("_v3")),
+    hayTablasV3,
     soloLectura:true,consultasEjecutadas:3,
     autorizaMigracion:false,respaldoVerificado:false,
     aptoDespliegue:false,
