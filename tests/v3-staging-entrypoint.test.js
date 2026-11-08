@@ -68,8 +68,9 @@ test("Rechaza contrasenas insuficientes y puertos invalidos", () => {
   }
 });
 test("Staging real: HTTP loopback y datos ficticios, sin redes externas", async t => {
-  assert.equal(process.env.TURSO_DATABASE_URL, undefined);
-  assert.equal(process.env.TURSO_AUTH_TOKEN, undefined);
+  // Ausencia o cadena vacia son equivalentes; credenciales reales no.
+  assert.equal(Boolean(process.env.TURSO_DATABASE_URL), false);
+  assert.equal(Boolean(process.env.TURSO_AUTH_TOKEN), false);
   const s = await iniciarStagingV3({ entorno: base() });
   t.after(() => s.cerrar());
   assert.equal(s.host, "127.0.0.1");
