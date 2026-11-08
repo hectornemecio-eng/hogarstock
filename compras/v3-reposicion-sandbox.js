@@ -6,6 +6,21 @@
 // con otras compras abiertas y no conciliados antes desde la misma compra.
 const { createHash } = require("node:crypto");
 const TABLA = "hogarstock_reposiciones_v3";
+const VERSIONES = "hogarstock_productos_version_v3";
+// Los triggers detectan todos los cambios, también desde el catálogo antiguo.
+const CAMBIOS = [
+ ["insert","AFTER INSERT ON productos","NEW.id",""],
+ ["delete","AFTER DELETE ON productos","OLD.id",""],
+ ["update","AFTER UPDATE ON productos","NEW.id",
+  " WHEN OLD.agotado IS NOT NEW.agotado"+
+  " OR OLD.nombre IS NOT NEW.nombre"+
+  " OR OLD.categoria IS NOT NEW.categoria"],
+].map(([sufijo,evento,id,condicion])=>
+ "CREATE TRIGGER IF NOT EXISTS hs_v3_product_version_"+sufijo+
+ " "+evento+condicion+" BEGIN "+
+ "INSERT INTO "+VERSIONES+"(producto_id,version) VALUES("+id+",1)"+
+ " ON CONFLICT(producto_id) DO UPDATE SET version=version+1; END");
+
 const COLUMNAS = ["compra_id","producto_id","item_id","aplicada_en"];
 const CREAR = "CREATE TABLE IF NOT EXISTS " + TABLA +
   " (compra_id INTEGER NOT NULL,producto_id INTEGER NOT NULL," +
@@ -16,6 +31,7 @@ const CONSULTA =
   " c.revision AS compra_revision,i.id AS item_id," +
   " i.producto_id,i.estado AS item_estado,i.revision AS item_revision," +
   " p.id AS producto_existente,p.agotado AS agotado_actual," +
+  " COALESCE(v.version,0) AS version_producto," +
   " EXISTS(SELECT 1 FROM hogarstock_compra_items_v3 otro" +
   " JOIN hogarstock_compras_v3 otra ON otra.id=otro.compra_id" +
   " WHERE otro.producto_id=i.producto_id AND otra.estado='abierta'" +
@@ -26,6 +42,7 @@ const CONSULTA =
   " FROM hogarstock_compras_v3 c" +
   " JOIN hogarstock_compra_items_v3 i ON i.compra_id=c.id" +
   " LEFT JOIN productos p ON p.id=i.producto_id" +
+  " LEFT JOIN "+VERSIONES+" v ON v.producto_id=i.producto_id" +
   " WHERE c.id=? ORDER BY i.id";
 function exigirId(id) {
   if (!Number.isSafeInteger(id) || id < 1) {
@@ -61,10 +78,12 @@ function instantanea(rows, compraId) {
     String(f.item_estado),f.producto_existente===null?null:Number(f.producto_existente),
     f.agotado_actual===null?null:Number(f.agotado_actual),
     Number(f.compartida),Number(f.ya_aplicada),
+    Number(f.version_producto),
   ]);
   const huella = createHash("sha256").update(JSON.stringify(canon)).digest("hex");
   const lineas = rows.map(f=>Object.freeze({
     itemId:Number(f.item_id),productoId:Number(f.producto_id),
+    versionProducto:Number(f.version_producto),
     decision:estadoFila(f),
   }));
   const candidatos=lineas.filter(x=>x.decision==="REPONIBLE");
@@ -106,6 +125,27 @@ function crearRepositorInventarioV3({cliente,entorno={},reloj=Date.now}={}) {
       }
     }
     await cliente.execute(CREAR);
+    // Sólo en laboratorio; no alterar esquema de la tabla original.
+    const tablaVersiones=await cliente.execute("PRAGMA table_info("+VERSIONES+")");
+    if (tablaVersiones.rows.length) {
+      const m=new Map(tablaVersiones.rows.map(f=>[String(f.name),f]));
+      if (!m.has("producto_id") || !m.has("version") ||
+          Number(m.get("producto_id").pk)!==1) {
+        throw Error("V3_REPOSICION_VERSION_ESQUEMA_INCOMPATIBLE");
+      }
+    }
+    await cliente.execute("CREATE TABLE IF NOT EXISTS "+VERSIONES+
+      "(producto_id INTEGER PRIMARY KEY,version INTEGER NOT NULL DEFAULT 0)");
+    for (const sentencia of CAMBIOS) await cliente.execute(sentencia);
+    const triggers=await cliente.execute({
+      sql:"SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE ?",
+      args:["hs_v3_product_version_%"],
+    });
+    const nombres=new Set(triggers.rows.map(f=>String(f.name)));
+    if (["insert","delete","update"].some(n=>
+        !nombres.has("hs_v3_product_version_"+n))) {
+      throw Error("V3_REPOSICION_TRIGGERS_INCOMPLETOS");
+    }
     inicializado=true;
   }
   async function preparar({compraId}={}) {
@@ -145,9 +185,11 @@ function crearRepositorInventarioV3({cliente,entorno={},reloj=Date.now}={}) {
            " AND NOT EXISTS (SELECT 1 FROM hogarstock_compra_items_v3 i2" +
            " JOIN hogarstock_compras_v3 c2 ON c2.id=i2.compra_id" +
            " WHERE i2.producto_id=productos.id AND c2.estado='abierta')" +
+           " AND COALESCE((SELECT v.version FROM "+VERSIONES+
+           " v WHERE v.producto_id=productos.id),0)=?" +
            " AND NOT EXISTS (SELECT 1 FROM "+TABLA+" j" +
            " WHERE j.compra_id=? AND j.producto_id=productos.id)",
-          args:[id,compraId,compraId],
+          args:[id,compraId,fila.versionProducto,compraId],
         });
         if (Number(actualizado.rowsAffected)!==1) {
           throw Error("V3_REPOSICION_CONFLICTO_ATOMICO");
