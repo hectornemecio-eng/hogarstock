@@ -92,6 +92,7 @@ test("Acepta alojamiento V3 aislado con DNS de proveedor y host exactos",()=>{
       HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:d.url,
       HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:d.tipo,
       HOGARSTOCK_V3_REMOTE_STAGE_HOST:d.host,
+      HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S",
     }));
     assert.equal(validado.proveedor,d.tipo);
     assert.equal(validado.hostWeb,d.host);
@@ -125,12 +126,41 @@ test("Proveedor y host deben coincidir literalmente con la configuración audita
       /V3_REMOTO_(PROVEEDOR|HOST)_NO_COINCIDE/);
   }
 });
+test("Decisión vigente: Render permitido y otros proveedores pausados por defecto",()=>{
+  const actual=validarPerfilRemoto(perfil());
+  assert.equal(actual.proveedor,"render");
+  for(const perfilHost of [
+    {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://web--hogarstock-v3-stage--abc.code.run",
+     HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"northflank",
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"web--hogarstock-v3-stage--abc.code.run"},
+    {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://hogarstock-v3-stage.spain.free.enzonic.com",
+     HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic",
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com",
+     HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S"},
+  ]) {
+    assert.throws(()=>validarPerfilRemoto(perfil(perfilHost)),
+      /V3_REMOTO_ALTERNATIVAS_PAUSADAS/);
+  }
+});
+test("Solo autorización explícita futura desbloquea prueba de DNS alternativo",()=>{
+  const optIn=perfil({
+    HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://web--hogarstock-v3-stage--abc.code.run",
+    HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"northflank",
+    HOGARSTOCK_V3_REMOTE_STAGE_HOST:"web--hogarstock-v3-stage--abc.code.run",
+    HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S",
+  });
+  const cfg=validarPerfilRemoto(optIn);
+  assert.equal(cfg.proveedor,"northflank");
+  assert.equal(cfg.permitirConexion,false);
+  assert.equal(cfg.permitirEscritura,false);
+});
 test("En proveedores alternativos se mantiene el bloqueo de red por defecto",async()=>{
   let llamadas=0;
   for(const extra of [
     {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://p01--hogarstock-v3-stage--abc.salvo.code.run",
      HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"northflank",
-     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"p01--hogarstock-v3-stage--abc.salvo.code.run"},
+     HOGARSTOCK_V3_REMOTE_STAGE_HOST:"p01--hogarstock-v3-stage--abc.salvo.code.run",
+     HOGARSTOCK_V3_ALLOW_OTHER_PROVIDER:"S"},
     {HOGARSTOCK_V3_REMOTE_STAGE_ORIGIN:"https://hogarstock-v3-stage.spain.free.enzonic.com",
      HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER:"enzonic",
      HOGARSTOCK_V3_REMOTE_STAGE_HOST:"hogarstock-v3-stage.spain.free.enzonic.com"},
