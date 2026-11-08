@@ -1,0 +1,57 @@
+name: HogarStock V3 - staging aislado (sin produccion)
+
+on:
+  push:
+    branches:
+      - seguridad-pruebas-2026-11-05
+    paths:
+      - integration/v3-staging-entrypoint.js
+      - tests/v3-staging-entrypoint.test.js
+      - .github/workflows/v3-staging-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-sin-red:
+    name: Staging local ficticio - Node ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.11.0', '22']
+    env:
+      HOGARSTOCK_V3_WHATSAPP_LIVE: ''
+      TURSO_DATABASE_URL: ''
+      TURSO_AUTH_TOKEN: ''
+      WA_MASTER_KEY: ''
+      WA_ALLOWED_NUMBERS: ''
+      WA_AUTOMATION: ''
+      HOGARSTOCK_V3_SANDBOX: ''
+      HOGARSTOCK_V3_STAGING: ''
+      HOGARSTOCK_V3_STAGING_PUBLIC: ''
+    steps:
+      - name: Obtener rama experimental
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Comprobar sintaxis
+        run: |
+          node --check integration/v3-staging-entrypoint.js
+          node --check tests/v3-staging-entrypoint.test.js
+
+      - name: Instalar dependencias fijadas sin scripts de terceros
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verificar exclusivamente staging SQLite ficticio
+        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js
+
+      - name: Confirmar que el entrypoint de produccion V2 no cambia
+        run: |
+          node -e "const p=require('./package.json');if(p.scripts.start!=='node server.js')process.exit(1);console.log('MAIN_START_SIN_CAMBIOS=SI')"
