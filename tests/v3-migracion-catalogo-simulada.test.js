@@ -211,3 +211,31 @@ test("Un segundo ensayo no reescribe una copia ya creada",async t=>{
   assert.equal((await e.destino.execute(
     "SELECT COUNT(*) AS n FROM productos")).rows[0].n,4);
 });
+
+test("Dos clientes SQL distintos que apuntan al mismo archivo se rechazan",async t=>{
+  const e=await escenario(t);
+  const misma=createClient({url:"file:"+join(e.dir,"source-v2.sqlite")});
+  t.after(async()=>misma.close());
+  const a=await leer(e);
+  await assert.rejects(simularMigracionCatalogo({
+    origen:e.origen,destino:misma,entorno,confirmacion:true,
+    huellaEsperada:a.reporte.huellaSha256,
+  }),/RUTA_NO_AUTORIZADA|DESTINO_FISICO_NO_AISLADO/);
+  assert.equal((await leer(e)).reporte.huellaSha256,a.reporte.huellaSha256);
+});
+test("Dos clientes no locales que simulan un esquema válido se bloquean antes de escribir",async()=>{
+  let llamadas=0;
+  const remoto={
+    async execute(q){
+      llamadas++;
+      if(q==="PRAGMA database_list")return {rows:[{name:"main",file:""}]};
+      throw Error("NO_DEBE_LEER_DATOS_REMOTOS");
+    },
+    async batch(){throw Error("NO_DEBE_ESCRIBIR");},
+  };
+  await assert.rejects(simularMigracionCatalogo({
+    origen:remoto,destino:{...remoto},entorno,confirmacion:true,
+    huellaEsperada:"0".repeat(64),
+  }),/NO_ES_BASE_LOCAL/);
+  assert.equal(llamadas,1);
+});
