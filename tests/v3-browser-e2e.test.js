@@ -106,7 +106,9 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   await admin.getByText("Todavía no hay respuestas registradas para esta compra.").waitFor();
   assert.equal(await admin.locator("#responses button").count(),0);
   await admin.locator("#showReconciliation").click();
-  await admin.getByText("Informe consultado. No se ha modificado el inventario.").waitFor();
+  await admin.getByText("Informe consultado. Reposición no habilitada.").waitFor();
+  assert.match(await admin.locator("#reconciliation").innerText(),
+    /Reposición desactivada en este entorno/);
   assert.ok((await admin.locator("#reconciliation").innerText()).includes("REVISION_ADMINISTRADOR"));
 
   const productos = await e.cliente.execute("SELECT nombre,agotado FROM productos ORDER BY id");
