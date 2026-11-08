@@ -27,6 +27,8 @@ on:
       - tests/v3-migracion-catalogo-simulada.test.js
       - integration/v3-auditoria-v2-solo-lectura.js
       - tests/v3-auditoria-v2-solo-lectura.test.js
+      - scripts/v3-auditar-turso-v2-solo-lectura.js
+      - tests/v3-auditar-turso-v2-guard.test.js
       - public/admin-v3.html
       - api/v3-router.js
       - whatsapp/outbox-store.js
@@ -88,6 +90,8 @@ jobs:
           node --check tests/v3-migracion-catalogo-simulada.test.js
           node --check integration/v3-auditoria-v2-solo-lectura.js
           node --check tests/v3-auditoria-v2-solo-lectura.test.js
+          node --check scripts/v3-auditar-turso-v2-solo-lectura.js
+          node --check tests/v3-auditar-turso-v2-guard.test.js
           node --check api/v3-router.js
           node --check whatsapp/outbox-store.js
 
@@ -95,7 +99,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Verificar exclusivamente staging SQLite ficticio
-        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js tests/v3-persistent-staging.test.js tests/v3-remote-staging.test.js tests/v3-verify-staging-backup.test.js tests/v3-auto-apply-verified.test.js tests/v3-close-notify-lab.test.js tests/v3-reposicion-sandbox.test.js tests/v3-reposicion-http-lab.test.js tests/v3-reposicion-ui.test.js tests/v3-migracion-catalogo-simulada.test.js tests/v3-auditoria-v2-solo-lectura.test.js
+        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js tests/v3-persistent-staging.test.js tests/v3-remote-staging.test.js tests/v3-verify-staging-backup.test.js tests/v3-auto-apply-verified.test.js tests/v3-close-notify-lab.test.js tests/v3-reposicion-sandbox.test.js tests/v3-reposicion-http-lab.test.js tests/v3-reposicion-ui.test.js tests/v3-migracion-catalogo-simulada.test.js tests/v3-auditoria-v2-solo-lectura.test.js tests/v3-auditar-turso-v2-guard.test.js
 
       - name: Confirmar que el entrypoint de produccion V2 no cambia
         run: |
