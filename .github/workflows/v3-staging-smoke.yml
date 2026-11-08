@@ -15,6 +15,8 @@ on:
       - tests/v3-remote-staging.test.js
       - integration/v3-verify-staging-backup.js
       - tests/v3-verify-staging-backup.test.js
+      - whatsapp/v3-auto-apply-verified.js
+      - tests/v3-auto-apply-verified.test.js
       - .github/workflows/v3-staging-smoke.yml
   workflow_dispatch:
 
@@ -61,12 +63,14 @@ jobs:
           node --check tests/v3-remote-staging.test.js
           node --check integration/v3-verify-staging-backup.js
           node --check tests/v3-verify-staging-backup.test.js
+          node --check whatsapp/v3-auto-apply-verified.js
+          node --check tests/v3-auto-apply-verified.test.js
 
       - name: Instalar dependencias fijadas sin scripts de terceros
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Verificar exclusivamente staging SQLite ficticio
-        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js tests/v3-persistent-staging.test.js tests/v3-remote-staging.test.js tests/v3-verify-staging-backup.test.js
+        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js tests/v3-persistent-staging.test.js tests/v3-remote-staging.test.js tests/v3-verify-staging-backup.test.js tests/v3-auto-apply-verified.test.js
 
       - name: Confirmar que el entrypoint de produccion V2 no cambia
         run: |
