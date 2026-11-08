@@ -222,3 +222,56 @@ test("Huella invalida, ID invalido y envio sin init se rechazan",async t=>{
   await assert.rejects(rep2.preparar({compraId:e.compraId}),
     /NO_INICIALIZADA/);
 });
+
+test("El contador monotónico detecta ABA 1-0-1 después del informe",async t=>{
+  const e=await escenario(t);
+  await e.marcar(1);
+  await e.compras.finalizarCompra({compraId:e.compraId});
+  const antes=await e.rep.preparar({compraId:e.compraId});
+  const version0=antes.lineas[0].versionProducto;
+  await e.db.execute("UPDATE productos SET agotado=0 WHERE id=1");
+  await e.db.execute("UPDATE productos SET agotado=1 WHERE id=1");
+  const despues=await e.rep.preparar({compraId:e.compraId});
+  assert.equal(despues.lineas[0].versionProducto,version0+2);
+  assert.notEqual(despues.huella,antes.huella);
+  await assert.rejects(e.rep.aplicar({
+    compraId:e.compraId,huellaEsperada:antes.huella,confirmacion:true,
+  }),/DESACTUALIZADA/);
+  assert.equal(await e.agotado(1),1);
+  assert.equal(await e.bitacora(),0);
+});
+test("Los cambios directos del catálogo incrementan revisión; no-op no incrementa",async t=>{
+  const e=await escenario(t);
+  await e.marcar(1);
+  await e.compras.finalizarCompra({compraId:e.compraId});
+  const inicio=(await e.rep.preparar({compraId:e.compraId})).lineas[0].versionProducto;
+  await e.db.execute("UPDATE productos SET nombre='Otro nombre FICTICIO' WHERE id=1");
+  await e.db.execute("UPDATE productos SET agotado=1 WHERE id=1");
+  const nuevo=(await e.rep.preparar({compraId:e.compraId})).lineas[0].versionProducto;
+  assert.equal(nuevo,inicio+1);
+});
+test("Borrado y recreación con mismo ID invalidan informe antiguo",async t=>{
+  const e=await escenario(t);
+  await e.marcar(1);
+  await e.compras.finalizarCompra({compraId:e.compraId});
+  const i=await e.rep.preparar({compraId:e.compraId});
+  await e.db.execute("DELETE FROM productos WHERE id=1");
+  await e.db.execute("INSERT INTO productos(id,nombre,categoria,agotado) VALUES(1,'Recreado FICTICIO','Ensayo',1)");
+  const segundo=await e.rep.preparar({compraId:e.compraId});
+  assert.ok(segundo.lineas[0].versionProducto>=i.lineas[0].versionProducto+2);
+  await assert.rejects(e.rep.aplicar({compraId:e.compraId,
+    huellaEsperada:i.huella,confirmacion:true}),/DESACTUALIZADA/);
+});
+test("La version de catálogo persiste al reinicializar el servicio",async t=>{
+  const e=await escenario(t);
+  await e.marcar(1);
+  await e.compras.finalizarCompra({compraId:e.compraId});
+  await e.db.execute("UPDATE productos SET agotado=0 WHERE id=1");
+  await e.db.execute("UPDATE productos SET agotado=1 WHERE id=1");
+  const i=await e.rep.preparar({compraId:e.compraId});
+  const segundo=crearRepositorInventarioV3({cliente:e.db,entorno});
+  await segundo.init();
+  const b=await segundo.preparar({compraId:e.compraId});
+  assert.equal(b.lineas[0].versionProducto,i.lineas[0].versionProducto);
+  assert.equal(b.huella,i.huella);
+});
