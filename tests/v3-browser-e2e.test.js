@@ -58,6 +58,7 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   const comprador = await e.comprador.newPage();
   await comprador.goto(enlace);
   await comprador.getByText("Lista disponible.").waitFor();
+  assert.equal(await comprador.locator("#compartirPanel").isVisible(),false);
   assert.equal(await comprador.evaluate(() => location.hash), "");
   assert.equal(await comprador.locator("#estadoGlobal").innerText(), "En curso");
   assert.equal(await comprador.locator("#lista li").count(), 2);
@@ -86,6 +87,22 @@ test("Navegador HTTPS: compra completa entre administrador y comprador aislados"
   await comprador.locator("#finalizar").click();
   await comprador.getByText("Compra finalizada y registrada.").waitFor();
   assert.equal(await comprador.locator("#estadoGlobal").innerText(), "Finalizada");
+  // Alternativa manual: prepara un texto sin el secreto del enlace, sin
+  // enviar mensajes ni abrir WhatsApp en la prueba.
+  assert.equal(await comprador.locator("#compartirPanel").isVisible(),true);
+  const resumen=await comprador.locator("#resumenCompartir").inputValue();
+  assert.match(resumen,/Compra finalizada con 1 producto/);
+  assert.match(resumen,/no disponible/);
+  assert.ok(!resumen.includes(enlace));
+  assert.ok(!resumen.includes("invitacion="));
+  const urlWa=await comprador.locator("#abrirWhatsApp").getAttribute("href");
+  const parsedWa=new URL(urlWa);
+  assert.equal(parsedWa.hostname,"wa.me");
+  assert.equal(parsedWa.searchParams.get("text"),resumen);
+  assert.equal(await comprador.locator("#abrirWhatsApp").getAttribute("rel"),
+    "noopener noreferrer");
+  assert.match(await comprador.locator("#avisoCompartir").innerText(),/manual/);
+
 
   // Regresión observada en Windows: listado finalizado y detalle abierto.
   // Actualizar debe dejar ambos coherentes SIN pulsar Ver.
@@ -277,4 +294,41 @@ test("Navegador HTTPS real: cambio ABA tras informe se rechaza sin reponer",asyn
     "SELECT agotado FROM productos WHERE id=1")).rows[0].agotado),1);
   assert.equal(Number((await e.cliente.execute(
     "SELECT COUNT(*) AS n FROM hogarstock_reposiciones_v3")).rows[0].n),0);
+});
+
+test("Navegador HTTPS: comprador prepara cierre completo manual sin Baileys",async t=>{
+  const e=await entorno(t);
+  const admin=await e.admin.newPage();
+  await iniciarAdmin(admin,e.origen);
+  await admin.locator('nav [data-tab="compras"]').click();
+  await admin.locator('#missingSelection input[type="checkbox"]').first().check();
+  await admin.locator("#createPurchase").click();
+  await admin.locator("#detail").waitFor({state:"visible"});
+  admin.once("dialog",d=>d.accept());
+  await admin.locator("#createInvitation").click();
+  await admin.locator("#invitationArea").waitFor({state:"visible"});
+  const enlace=await admin.locator("#invitationLink").inputValue();
+  const buyer=await e.comprador.newPage();
+  await buyer.goto(enlace);
+  await buyer.getByText("Lista disponible.").waitFor();
+  assert.equal(await buyer.locator("#compartirPanel").isVisible(),false);
+  await buyer.locator("#lista select").first().selectOption("comprado");
+  await buyer.getByText("Cambio guardado.").waitFor();
+  buyer.once("dialog",d=>d.accept());
+  await buyer.locator("#finalizar").click();
+  await buyer.getByText("Compra finalizada y registrada.").waitFor();
+  assert.equal(await buyer.locator("#compartirPanel").isVisible(),true);
+  const mensaje=await buyer.locator("#resumenCompartir").inputValue();
+  assert.match(mensaje,/Compra completa: todos los productos comprados/);
+  assert.doesNotMatch(mensaje,/producto\(s\) pendiente\(s\)/);
+  assert.ok(!mensaje.includes("invitacion="));
+  const link=await buyer.locator("#abrirWhatsApp").getAttribute("href");
+  assert.equal(new URL(link).searchParams.get("text"),mensaje);
+  assert.equal(await buyer.locator("#abrirWhatsApp").isVisible(),true);
+  // Cerrar acceso borra el resumen del DOM y el vínculo con WhatsApp.
+  await buyer.locator("#salir").click();
+  await buyer.getByText("Acceso cerrado.").waitFor();
+  assert.equal(await buyer.locator("#compartirPanel").isVisible(),false);
+  assert.equal(await buyer.locator("#resumenCompartir").inputValue(),"");
+  assert.equal(await buyer.locator("#abrirWhatsApp").getAttribute("href"),null);
 });
