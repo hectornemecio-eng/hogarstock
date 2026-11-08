@@ -6,11 +6,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 const { crearServidorAislado, CLAVE_DEMO } = require("../integration/v3-sandbox-server.js");
+const { crearAlmacenCompras } = require("../compras/store.js");
 
-async function entorno(t) {
+async function entorno(t, { habilitarReposicion = false } = {}) {
   const server = await crearServidorAislado({
     certPath: process.env.HOGARSTOCK_SANDBOX_CERT,
     keyPath: process.env.HOGARSTOCK_SANDBOX_KEY,
+    habilitarReposicion,
   });
   t.after(() => server.cerrar());
   const browser = await chromium.launch({ headless: true });
@@ -201,4 +203,78 @@ test("Navegador HTTPS: cambio de contraseña y revocación administrativa por co
     return (await fetch("/api/v3/compras/"+id,{credentials:"same-origin"})).status;
   });
   assert.equal(despues,403);
+});
+
+test("Navegador HTTPS real: reposición opt-in requiere doble aprobación y respeta faltantes",async t=>{
+  const e=await entorno(t,{habilitarReposicion:true});
+  const compras=crearAlmacenCompras(e.cliente);
+  await compras.init();
+  const id=(await compras.crearCompra({
+    lineas:[{productoId:1},{productoId:2}],
+  })).compraId;
+  const detalle=await compras.obtenerCompra({compraId:id});
+  await compras.cambiarEstadoItem({
+    compraId:id,itemId:detalle.items[0].id,
+    revisionEsperada:0,estado:"comprado",
+  });
+  await compras.finalizarCompra({compraId:id});
+
+  const admin=await e.admin.newPage();
+  await iniciarAdmin(admin,e.origen);
+  await admin.locator('nav [data-tab="compras"]').click();
+  await admin.locator("#purchaseRows button").first().click();
+  await admin.locator("#showReconciliation").click();
+  await admin.locator("#reconciliation").getByText(/1 productos reponibles/).waitFor();
+  assert.match(await admin.locator("#reconciliation").innerText(),/REPONIBLE/);
+  assert.match(await admin.locator("#reconciliation").innerText(),/NO_COMPRADO/);
+  assert.equal(await admin.locator("#reconciliation button").count(),1);
+
+  // Cancelar la confirmación deja intacto el catálogo.
+  admin.once("dialog",d=>d.dismiss());
+  await admin.locator("#reconciliation button").click();
+  assert.equal(Number((await e.cliente.execute(
+    "SELECT agotado FROM productos WHERE id=1")).rows[0].agotado),1);
+
+  // Una aprobación explícita repone únicamente el artículo comprado.
+  admin.once("dialog",d=>d.accept());
+  await admin.locator("#reconciliation button").click();
+  await admin.getByText("Inventario de ensayo actualizado; revisa el catálogo.").waitFor();
+  const productos=await e.cliente.execute(
+    "SELECT id,agotado FROM productos WHERE id IN (1,2) ORDER BY id");
+  assert.deepEqual(productos.rows.map(x=>Number(x.agotado)),[0,1]);
+  const bitacora=await e.cliente.execute(
+    "SELECT COUNT(*) AS n FROM hogarstock_reposiciones_v3");
+  assert.equal(Number(bitacora.rows[0].n),1);
+  await admin.locator("#showReconciliation").click();
+  await admin.locator("#reconciliation").getByText(/CONCILIADA_ANTERIORMENTE/).waitFor();
+  assert.equal(await admin.locator("#reconciliation button").count(),0);
+});
+
+test("Navegador HTTPS real: cambio ABA tras informe se rechaza sin reponer",async t=>{
+  const e=await entorno(t,{habilitarReposicion:true});
+  const compras=crearAlmacenCompras(e.cliente);
+  await compras.init();
+  const id=(await compras.crearCompra({lineas:[{productoId:1}]})).compraId;
+  const detalle=await compras.obtenerCompra({compraId:id});
+  await compras.cambiarEstadoItem({
+    compraId:id,itemId:detalle.items[0].id,
+    revisionEsperada:0,estado:"comprado",
+  });
+  await compras.finalizarCompra({compraId:id});
+  const admin=await e.admin.newPage();
+  await iniciarAdmin(admin,e.origen);
+  await admin.locator('nav [data-tab="compras"]').click();
+  await admin.locator("#purchaseRows button").first().click();
+  await admin.locator("#showReconciliation").click();
+  await admin.locator("#reconciliation button").waitFor();
+  // Otro agente modifica la necesidad y la devuelve al valor previo.
+  await e.cliente.execute("UPDATE productos SET agotado=0 WHERE id=1");
+  await e.cliente.execute("UPDATE productos SET agotado=1 WHERE id=1");
+  admin.once("dialog",d=>d.accept());
+  await admin.locator("#reconciliation button").click();
+  await admin.getByText("Operación no completada: V3_REPOSICION_DESACTUALIZADA").waitFor();
+  assert.equal(Number((await e.cliente.execute(
+    "SELECT agotado FROM productos WHERE id=1")).rows[0].agotado),1);
+  assert.equal(Number((await e.cliente.execute(
+    "SELECT COUNT(*) AS n FROM hogarstock_reposiciones_v3")).rows[0].n),0);
 });
