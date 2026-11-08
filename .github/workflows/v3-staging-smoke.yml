@@ -7,6 +7,9 @@ on:
     paths:
       - integration/v3-staging-entrypoint.js
       - tests/v3-staging-entrypoint.test.js
+      - integration/v3-staging-persistence.js
+      - integration/v3-persistent-staging-entrypoint.js
+      - tests/v3-persistent-staging.test.js
       - .github/workflows/v3-staging-smoke.yml
   workflow_dispatch:
 
@@ -45,12 +48,15 @@ jobs:
         run: |
           node --check integration/v3-staging-entrypoint.js
           node --check tests/v3-staging-entrypoint.test.js
+          node --check integration/v3-staging-persistence.js
+          node --check integration/v3-persistent-staging-entrypoint.js
+          node --check tests/v3-persistent-staging.test.js
 
       - name: Instalar dependencias fijadas sin scripts de terceros
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Verificar exclusivamente staging SQLite ficticio
-        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js
+        run: node --test --test-reporter=tap --test-concurrency=1 tests/v3-staging-entrypoint.test.js tests/v3-persistent-staging.test.js
 
       - name: Confirmar que el entrypoint de produccion V2 no cambia
         run: |
