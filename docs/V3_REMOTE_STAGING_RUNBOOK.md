@@ -70,3 +70,23 @@ Definir las siguientes variables **en la configuración privada del nuevo servic
 CI ejecuta `tests/v3-remote-staging.test.js` con base **SQLite local inyectada**. Esto comprueba aislamiento, rechazo de claves productivas, prueba de identidad, requisitos de respaldo/confirmación y HTTP de V3. **No** prueba latencia/estabilidad en Render, red Turso real ni WhatsApp.
 
 Próxima puerta de autorización: validar en cuentas Render y Turso **existencia de cuota gratuita** y que el usuario acepta crear recursos externos independientes. Nunca presentar este documento como una migración ya realizada.
+
+
+## Verificación offline de respaldo — implementada 2026-11-08
+
+Existe un verificador independiente: `integration/v3-verify-staging-backup.js`.
+
+**Entrada:** un archivo `.sqlite` autocontenido, obtenido de una exportación autorizada y coherente de la **base de ensayo**, el SHA-256 real del archivo, el hostname y el comprobante de esa base, y un directorio temporal fuera del repositorio. **No utilizar jamás un respaldo de V2/productivo.**
+
+El verificador:
+1. Rechaza rutas inexistentes, formatos no SQLite, SHA-256 distintos y etiquetas de identidad incorrectas.
+2. Copia el respaldo a un directorio temporal de ensayo y comprueba que la copia tiene el mismo SHA-256.
+3. Abre la COPIA con libSQL local, ejecuta `PRAGMA integrity_check`, valida la tabla `hogarstock_v3_stage_proof`, revisa las tablas V3 y confirma el catálogo.
+4. No imprime tokens, credenciales, filas de usuarios, contraseñas ni el comprobante `proof_id`.
+5. Conserva la copia temporal para que pueda eliminarse **después de terminar Node**, evitando el problema Windows `EPERM`. Nunca borra ni sobrescribe el archivo original.
+
+**Ejecución de futuro ensayo:** el operador configura en un proceso local aislado `HOGARSTOCK_STAGING_BACKUP_FILE`, `HOGARSTOCK_STAGING_BACKUP_SHA256`, `HOGARSTOCK_STAGING_TURSO_HOST`, `HOGARSTOCK_STAGING_PROOF_ID` y `TMP` apuntando a D:, y ejecuta `node integration/v3-verify-staging-backup.js`. No introducir estos valores en GitHub ni en el chat. La verificación local del snapshot es condición **necesaria, no suficiente**: además se debe acreditar que dicho snapshot procede realmente de la base Turso remota de ensayo y es recuperable en una segunda base separada. La restauración Turso real no se ha efectuado.
+
+**CI de evidencia:** `tests/v3-verify-staging-backup.test.js` contiene seis casos de verificación/restauración ficticia, hash falso, identidad errónea, archivo corrupto, directorio inseguro y parámetros inválidos. El workflow `v3-staging-smoke.yml` ejecutó **29/29** con Node 20.11.0 y **29/29** con Node 22 en run **42482030742**, commit `1daae58e13c2c6f93b409406f19f577b1f9e651b`; el workflow general run **42482030550** también pasó. No hubo conexión remota ni despliegue.
+
+**Barrera económica:** Render API permite consultar plan Free del servicio `hogarstock`, pero no las cuotas de instancias Free del workspace ni su facturación. Las 750 horas mensuales son compartidas y agotar el cupo suspende TODOS los servicios Free. No crear otro Render sin revisar Billing ni el riesgo para V2. El plan Turso Free es público, pero las cuotas/overages de la cuenta no se han comprobado.
