@@ -75,3 +75,28 @@ Con las limitaciones actuales, el fallback manual es la ruta más cercana a func
 - [ ] Probar conexiones reales, persistencia, restauración, migración y reversión antes de sustituir V2.
 
 **Conclusión operativa:** la prioridad ya no es ampliar pruebas ficticias de forma indiscriminada; es superar verificaciones económicas y de red reales. Mantener `main`, V2, Turso y WhatsApp originales intactos hasta que se autorice el cambio.
+
+## Actualización verificable — v3.54 (8 de noviembre de 2026)
+
+Se han revisado de nuevo las fuentes primarias. **Northflank conserva una contradicción no resuelta**: la tabla comercial anuncia Sandbox Free `No card needed`, hasta 20 USD mensuales en recursos y `Always on, no sleeping`, pero su documentación de facturación indica que los usuarios deben añadir un medio de pago antes de crear recursos. La información pública no demuestra que el crédito sea un tope duro sin cargos. Se conserva el bloqueo: **no registrar tarjeta ni crear recursos**.
+
+Se ha encontrado un candidato adicional que no debe confundirse con una solución probada: **Enzonic**, `https://www.enzonic.com/nodejs`. Según el propio proveedor, ofrece 1 servidor Free Forever por cuenta, 512 MB RAM, 50 % CPU, 10 GB SSD, Node 18/20/22, funcionamiento 24/7 y sin tarjeta, sujeto a capacidad. Otra página del mismo proveedor, `https://enzonic.com/es/web-hosting`, promete 3,5 GB RAM en el nivel gratuito. Esta discrepancia y la falta de evidencia independiente de disponibilidad o condiciones de agotamiento obligan a clasificarlo **candidato de confianza no determinada**. No se debe introducir ningún dato personal adicional ni alojar datos familiares sin revisar términos, región real, protección de datos y ausencia de cobros.
+
+**Avance de ingeniería realizado sin despliegue:** el punto de entrada `integration/v3-remote-staging-entrypoint.js` acepta ahora dominios de staging estrictamente conformes a Render, Northflank (subdominios `*.code.run`) y Enzonic (subdominios `*.spain.free.enzonic.com` o `*.us.free.enzonic.com`). Exige además `HOGARSTOCK_V3_REMOTE_STAGE_PROVIDER` y `HOGARSTOCK_V3_REMOTE_STAGE_HOST` exactos. Se rechazan dominios de producción, rutas y puertos, hosts de otro proveedor, y sufijos falsos de dominio. **La red permanece bloqueada por defecto**. La aceptación de un hostname no valida su propiedad ni licencia.
+
+Pruebas: `tests/v3-remote-staging.test.js` añade 4 casos (12 en esa suite). Workflow `42496038877`: **78/78 casos** con Node 20.11 y **78/78** con Node 22; regresión general `42496038676` correcta. No modifica el servicio actual de Render ni `main`.
+
+**Criterios definitivos de selección de hosting (todos obligatorios):**
+1. No requiere tarjeta, depósito, saldo prepago, suscripción, facturación por excedentes ni compromisos de cargo.
+2. El proceso Node puede ejecutarse continuamente, sin suspensión por inactividad, con memoria suficiente para la aplicación, sujeto a cuota real verificada.
+3. Permite HTTP(S) público, WebSocket **saliente** y salidas TLS a Turso y WhatsApp.
+4. Tiene separación de secretos y datos, controles de acceso, soporte razonable y condiciones de tratamiento de datos familiares verificables.
+5. Es posible obtener un respaldo restaurable, detener el despliegue sin coste y volver a V2.
+6. El carácter no oficial de Baileys sigue siendo un riesgo independiente incluso con un hosting adecuado.
+
+Si algún criterio esencial no puede acreditarse, la decisión es **NO APTO por ahora**, no «seguro porque la página diga Free».
+
+Fuentes adicionales:
+- https://www.enzonic.com/nodejs
+- https://enzonic.com/es/web-hosting
+- https://northflank.com/docs/v1/application/network/configure-ports
