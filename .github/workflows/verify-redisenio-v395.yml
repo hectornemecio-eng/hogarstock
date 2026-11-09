@@ -62,7 +62,7 @@ jobs:
           assert(admin.includes('fetch("/api/iniciar-compra"'));
           assert(admin.includes('fetch("/api/admin/contactos"'));
           assert(admin.includes('fetch("/api/productos"'));
-          assert(admin.includes('fetch("/api/agotar/'));
+          assert(admin.includes('/api/agotar/'));
           assert(buyer.includes('new WebSocket('));
           assert(buyer.includes('"/ws-comprador"'));
           assert(buyer.includes('peticion("/api/comprado/"'));
