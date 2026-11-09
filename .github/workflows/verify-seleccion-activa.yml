@@ -1,0 +1,100 @@
+name: HogarStock - seleccionar productos con compra abierta
+on:
+  push:
+    branches: [fix-seleccion-compra-activa-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis UI y rutas seguras
+        run: |
+          set -euo pipefail
+          node --check security/v2-grants.js
+          node --check server.js
+          node - <<'NODE'
+          const a=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+          const srv=fs.readFileSync('server.js','utf8'),ui=fs.readFileSync('public/index.html','utf8');
+          a(srv.includes('app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{'));
+          a(srv.includes('await grants.alternarProducto({productoId:id})'));
+          a(!srv.includes('COMPRA_ACTIVA_IMPIDE_CAMBIO'));
+          a(ui.includes('No se pudo cambiar el producto'));
+          for(const match of ui.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)){
+            if(match[1].trim())new vm.Script(match[1]);
+          }
+          console.log('SELECCION_UI_RUTA_SEGURA_OK');
+          NODE
+      - name: Prueba de integración libSQL sin tocar Turso
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const a=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+          const {createClient}=require('@libsql/client');
+          const {crearIdentidadV2,generarMaterial}=require('./security/v2-identity');
+          const {crearGrantsV2}=require('./security/v2-grants');
+          (async()=>{
+            const archivo=path.join(os.tmpdir(),'hs_seleccion_'+process.pid+'.db');
+            const db=createClient({url:'file:'+archivo});
+            try {
+              await db.execute('CREATE TABLE productos(id INTEGER PRIMARY KEY,nombre TEXT,categoria TEXT,agotado INTEGER)');
+              await db.batch([
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[1,'leche prueba','prueba',0]},
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[2,'pan prueba','prueba',1]},
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[3,'arroz prueba','prueba',0]}
+              ],'write');
+              const id=crearIdentidadV2({entorno:generarMaterial('contraseña-prueba-aislada-2026')});
+              const grants=crearGrantsV2({db,identidad:id,contactos:['34600000001','34600000002']});
+              await grants.init();
+              // Sin compra abierta, las casillas operan.
+              let ch=await grants.alternarProducto({productoId:1});
+              a.deepEqual(ch,{nuevoEstado:1,compraActiva:false});
+              const compra=await grants.prepararEnvio({telefono:'34600000001'});
+              a.equal(compra.cantidad,2);
+              const otra=await grants.prepararEnvio({telefono:'34600000002'});
+              a.equal(otra.compraId,compra.compraId);
+              const grant=id.leerComprador('Bearer '+compra.token);
+              // Quitar producto con compra compartida abierta.
+              ch=await grants.alternarProducto({productoId:1});
+              a.deepEqual(ch,{nuevoEstado:0,compraActiva:true});
+              let lista=await grants.listar({grant});
+              a.equal(lista.filter(x=>x.agotado).length,1);
+              // Agregar otro producto y verlo en el enlace ya enviado.
+              ch=await grants.alternarProducto({productoId:3});
+              a.deepEqual(ch,{nuevoEstado:1,compraActiva:true});
+              lista=await grants.listar({grant});
+              a.equal(lista.filter(x=>x.agotado).length,2);
+              // Un comprador marca pan comprado, no se pierde ese registro.
+              await grants.marcar({grant,productoId:2});
+              lista=await grants.listar({grant});
+              a.equal(lista.filter(x=>x.agotado).length,1);
+              // Se puede volver a incluir pan por nueva necesidad explícita.
+              ch=await grants.alternarProducto({productoId:2});
+              a.equal(ch.nuevoEstado,1);
+              lista=await grants.listar({grant});
+              a.equal(lista.filter(x=>x.agotado).length,2);
+              // Quitar y reponer idempotentemente una casilla sin borrar la compra.
+              await grants.alternarProducto({productoId:3});
+              await grants.alternarProducto({productoId:3});
+              await a.rejects(grants.alternarProducto({productoId:999}),/PRODUCTO_NO_ENCONTRADO/);
+              const cierre=await grants.finalizar({grant});
+              a.equal(cierre.faltan,2);
+              a.equal(cierre.telefonos[0],'34600000001');
+              const stock=await db.execute('SELECT COUNT(*) AS n FROM productos');
+              a.equal(Number(stock.rows[0].n),3);
+              console.log('SELECCION_CON_COMPRA_COMPARTIDA_Y_INVENTARIO_OK');
+            } finally {db.close();try{fs.unlinkSync(archivo)}catch(_){}}
+          })().catch(e=>{console.error('TEST_FAILED',e.code||e.name,e.message?.slice(0,250));process.exitCode=1});
+          NODE
+      - name: Ninguna credencial
+        run: |
+          test ! -f .env
+          test ! -f auth.json
