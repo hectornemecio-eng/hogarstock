@@ -1,0 +1,66 @@
+name: HogarStock - lockfile reproducible sin produccion
+
+on:
+  push:
+    branches: [lab-lockfile-hogarstock-2026-11-09]
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7060b27ef18de9de73091be3963e3c37cc2db246
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generar lockfile sin ejecutar scripts de terceros
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "7060b27ef18de9de73091be3963e3c37cc2db246"
+          test ! -f package-lock.json
+          test ! -f .env
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e "const fs=require('fs');const p=require('./package.json'),l=require('./package-lock.json');if(l.lockfileVersion!==3||JSON.stringify(p.dependencies)!==JSON.stringify(l.packages[''].dependencies))throw Error('LOCKFILE_MISMATCH');console.log('LOCKFILE_CONTRACT_OK')"
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e "require('express');require('ws');require('@libsql/client');require('dotenv');console.log('NODE22_DEPS_OK')"
+          node --input-type=module -e "const b=await import('@whiskeysockets/baileys');if(typeof b.default!=='function'||typeof b.initAuthCreds!=='function')throw Error('BAILEYS_EXPORTS');console.log('NODE22_BAILEYS_OK')"
+          rm -rf node_modules
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.11.0'
+
+      - name: Validar npm ci del MISMO lockfile bajo Node 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          node -e "require('express');require('ws');require('@libsql/client');require('dotenv');console.log('NODE20_DEPS_OK')"
+          node --input-type=module -e "const b=await import('@whiskeysockets/baileys');if(typeof b.default!=='function'||typeof b.initAuthCreds!=='function')throw Error('BAILEYS_EXPORTS');console.log('NODE20_BAILEYS_OK')"
+          rm -rf node_modules
+
+      - name: Preparar artefacto sin secretos
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp package-lock.json dist/package-lock.json
+          sha256sum dist/package-lock.json > dist/SHA256SUMS.txt
+          printf '%s\n' 'SOURCE=7060b27ef18de9de73091be3963e3c37cc2db246' 'PACKAGE_BLOB=50ffe201df8729af8a60bc91b0a261e361a735cf' 'NODE20=OK' 'NODE22=OK' 'NO_SECRETS=YES' > dist/PROVENANCE.txt
+          test ! -e dist/.env
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hogars-lockfile-v373-auditado
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
