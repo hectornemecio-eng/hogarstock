@@ -1,0 +1,39 @@
+name: HogarStock - verify lease retry
+on:
+  push:
+    branches: [hotfix-wa-lease-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify syntax and lease guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check whatsapp/wa-lease.js
+          node <<'NODE'
+          const a=require('node:assert/strict'), fs=require('node:fs');
+          const x=fs.readFileSync('server.js','utf8');
+          const retry=x.indexOf('if (errorWhatsApp === "HS_WA_LEASE_EN_USO")');
+          const guard=x.indexOf('if (/^HS_WA_(AUTH_',retry);
+          a(retry>0&&guard>retry);
+          a(x.slice(retry,guard).includes('programarReconexion();'));
+          a(!x.slice(retry,guard).includes('liberarWaLease'));
+          a(x.includes('codigo === DisconnectReason.restartRequired'));
+          a(x.includes('void colaCredenciales.then(() => {'));
+          console.log('LEASE_SAFE_RETRY_OK');
+          NODE
+      - name: Verify no secrets
+        run: |
+          test ! -f .env
+          test ! -f auth.json
