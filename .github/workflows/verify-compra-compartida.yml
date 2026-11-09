@@ -1,0 +1,104 @@
+name: HogarStock - compra compartida validacion
+on:
+  push:
+    branches: [feat-compra-compartida-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verificar sintaxis y permisos
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check security/v2-grants.js
+          node --check security/v2-identity.js
+          node <<'NODE'
+          const a=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+          const server=fs.readFileSync('server.js','utf8');
+          const html=fs.readFileSync('public/index.html','utf8');
+          a(server.includes('app.get("/api/admin/contactos",http.admin'));
+          a(server.includes('app.post("/api/iniciar-compra",http.adminWrite'));
+          a(server.includes('grants.validarDestinatarios(input)'));
+          a(server.includes('grants.yaEnviado('));
+          a(server.includes('grants.registrarEnviado('));
+          a(server.includes('cierre.telefonos||[cierre.telefono]'));
+          a(html.includes('id="contactosSeleccionados"'));
+          a(html.includes('body:JSON.stringify({telefonos})'));
+          const scripts=[...html.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)];
+          for(const m of scripts){if(m[1].trim())new vm.Script(m[1]);}
+          console.log('ADMIN_AUTH_MULTI_CONTACT_UI_SYNTAX_OK');
+          NODE
+      - name: Prueba funcional con tres destinatarios ficticios libSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const a=require('node:assert/strict');
+          const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+          const {createClient}=require('@libsql/client');
+          const {crearIdentidadV2,generarMaterial}=require('./security/v2-identity');
+          const {crearGrantsV2}=require('./security/v2-grants');
+          (async()=>{
+            const archivo=path.join(os.tmpdir(),'hogarstock_compartido_'+process.pid+'.db');
+            const db=createClient({url:'file:'+archivo});
+            try{
+              await db.execute('CREATE TABLE productos(id INTEGER PRIMARY KEY,nombre TEXT,categoria TEXT,agotado INTEGER)');
+              await db.batch([
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[1,'Leche ficticia','Pruebas',1]},
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[2,'Pan ficticio','Pruebas',1]},
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[3,'Huevos ficticios','Pruebas',0]}
+              ],'write');
+              const nums=['34600000001','34600000002','34600000003'];
+              const identidad=crearIdentidadV2({entorno:generarMaterial('una-contrasena-prueba-suficiente')});
+              const grants=crearGrantsV2({db,identidad,contactos:nums});
+              await grants.init();
+              a.deepEqual(grants.listarContactos(),nums);
+              a.deepEqual(grants.validarDestinatarios([nums[0],nums[0],nums[1]]),[nums[0],nums[1]]);
+              a.throws(()=>grants.validarDestinatarios(['34600000099']),/DESTINATARIO_NO_PERMITIDO/);
+              const primera=await grants.prepararEnvio({telefono:nums[0]});
+              a.equal(primera.nueva,true);a.equal(primera.cantidad,2);
+              const segunda=await grants.prepararEnvio({telefono:nums[1]});
+              a.equal(segunda.nueva,false);
+              a.equal(segunda.compraId,primera.compraId);
+              a.equal(segunda.token,primera.token);
+              a.equal(await grants.yaEnviado({compraId:primera.compraId,telefono:nums[0]}),true);
+              a.equal(await grants.yaEnviado({compraId:primera.compraId,telefono:nums[1]}),false);
+              await grants.registrarEnviado({compraId:primera.compraId,telefono:nums[1]});
+              a.equal(await grants.yaEnviado({compraId:primera.compraId,telefono:nums[1]}),true);
+              const tercera=await grants.prepararEnvio({telefono:nums[2]});
+              a.equal(tercera.token,primera.token);
+              await grants.registrarEnviado({compraId:primera.compraId,telefono:nums[2]});
+              const grant=identidad.leerComprador('Bearer '+tercera.token);
+              a.equal(grant.idCompra,primera.compraId);
+              a.equal((await grants.listar({grant})).length,2);
+              await grants.marcar({grant,productoId:1});
+              const actual=await grants.prepararEnvio({telefono:nums[2]});
+              a.equal(actual.cantidad,1);
+              a.deepEqual(actual.nombres,['Pan ficticio']);
+              const cierre=await grants.finalizar({grant});
+              a.equal(cierre.faltan,1);
+              a.deepEqual(cierre.telefonos,nums);
+              const rows=await db.execute('SELECT nombre,agotado FROM productos ORDER BY id');
+              a.equal(rows.rows.length,3);
+              a.equal(Number(rows.rows[0].agotado),0);
+              a.equal(Number(rows.rows[1].agotado),1);
+              await a.rejects(grants.listar({grant}),/COMPRA_CERRADA_O_EXPIRADA/);
+              console.log('TRES_CONTACTOS_COMPARTEN_UNA_COMPRA_SIN_DUPLICADOS_OK');
+            }finally{db.close();try{fs.unlinkSync(archivo)}catch(_){}}
+          })().catch(e=>{console.error('TEST_FAIL',e.code||e.name,e.message?.slice(0,220));process.exitCode=1});
+          NODE
+      - name: No credenciales ni datos reales en rama
+        run: |
+          test ! -f .env
+          test ! -f auth.json
