@@ -51,7 +51,7 @@
     }
     const grant=sessionStorage.getItem("hs_v2_buyer_grant");
     let ws=null,wsAutorizado=false,reconexion=null,intentos=0;
-    let ultimoSync=0,numeroCarga=0,finalizada=false,operacionActiva=false;
+    let ultimoSync=0,numeroCarga=0,finalizada=false,operacionActiva=false,renderizada=false;
     function mensaje(texto,tipo="warn"){
       estado.style.display="block";
       estado.className=tipo;
@@ -139,9 +139,10 @@
         if(solicitud!==numeroCarga || finalizada)return false;
         if(!Array.isArray(d.productos))throw Error("FORMATO_INVALIDO");
         // No reconstruir la lista si nada ha cambiado: evita parpadeos.
-        if(JSON.stringify(productos)!==JSON.stringify(d.productos)){
+        if(!renderizada || JSON.stringify(productos)!==JSON.stringify(d.productos)){
           productos=d.productos;
           render();
+          renderizada=true;
         }
         ultimoSync=Date.now();
         pintarSincronizacion();
