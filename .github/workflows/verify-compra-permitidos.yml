@@ -1,0 +1,77 @@
+name: HogarStock - validar envio compra real de prueba
+on:
+  push:
+    branches: [fix-compras-permitidos-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y comprobacion declaracion contacto
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check security/v2-grants.js
+          node --check server.js
+          node <<'NODE'
+          const fs=require('node:fs'),a=require('node:assert/strict');
+          const src=fs.readFileSync('security/v2-grants.js','utf8');
+          a(src.includes('  const permitidos = new Set('));
+          a(!src.includes('web puede iniciar.\\n  const permitidos'));
+          console.log('CONTACTOS_PERMITIDOS_DECLARADOS_OK');
+          NODE
+      - name: Integracion completa de compra con libSQL REAL en memoria
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const a=require('node:assert/strict');
+          const {createClient}=require('@libsql/client');
+          const {crearGrantsV2}=require('./security/v2-grants');
+          (async()=>{
+            const db=createClient({url:'file::memory:'});
+            try{
+              await db.execute('CREATE TABLE productos(id INTEGER PRIMARY KEY,nombre TEXT,categoria TEXT,agotado INTEGER)');
+              await db.batch([
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[1,'Leche ficticia','Pruebas',1]},
+                {sql:'INSERT INTO productos VALUES(?,?,?,?)',args:[2,'Pan ficticio','Pruebas',0]}
+              ],'write');
+              const telefono='34600000000';
+              const id={emitirComprador:({idCompra})=>({token:'test-token',hash:'a'.repeat(64),exp:Date.now()+3600000})};
+              const grants=crearGrantsV2({db,identidad:id,contactos:[telefono]});
+              await grants.init();
+              await a.rejects(grants.crearCompra({telefono:'34699999999'}),/DESTINATARIO_NO_PERMITIDO/);
+              const compra=await grants.crearCompra({telefono});
+              a.equal(compra.cantidad,1);
+              a.equal(compra.numero,telefono);
+              const grant={hash:'a'.repeat(64),idCompra:compra.compraId};
+              let lista=await grants.listar({grant});
+              a.equal(lista.length,1);
+              a.equal(lista[0].agotado,true);
+              await a.rejects(grants.crearCompra({telefono}),/COMPRA_YA_ABIERTA/);
+              await grants.marcar({grant,productoId:1});
+              lista=await grants.listar({grant});
+              a.equal(lista[0].agotado,false);
+              const c=await grants.finalizar({grant});
+              a.equal(c.faltan,0);
+              const result=await db.execute('SELECT id,nombre,agotado FROM productos ORDER BY id');
+              a.equal(result.rows.length,2);
+              a.equal(Number(result.rows[0].agotado),0);
+              a.equal(Number(result.rows[1].agotado),0);
+              console.log('COMPRA_LIBSQL_CREAR_LISTAR_MARCAR_CERRAR_OK');
+            }finally{db.close()}
+          })().catch(e=>{console.error('TEST_FAILED',e.code||e.name||'unknown',e.message?.slice(0,170));process.exitCode=1});
+          NODE
+      - name: Verificar no secretos ni datos reales
+        run: |
+          test ! -f .env
+          test ! -f auth.json
