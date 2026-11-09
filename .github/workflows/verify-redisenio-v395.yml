@@ -1,0 +1,128 @@
+name: HogarStock - verificar rediseño visual v3.95
+on:
+  push:
+    branches: [redisenio-visual-v395-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  visual-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Comprobar sintaxis, diseño y continuidad funcional
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check security/v2-grants.js
+          node --check security/v2-buyer-ws.js
+          node <<'NODE'
+          const fs=require('node:fs'),assert=require('node:assert/strict'),vm=require('node:vm');
+          const paths=['public/index.html','public/comprador.html','public/admin-login.html'];
+          const css=fs.readFileSync('public/hogarstock-ui.css','utf8');
+          assert(css.length>12000);
+          assert(!css.includes('@import'));
+          assert(!/https?:\/\/[^ ]/.test(css));
+          assert(css.includes('.page-admin .app-container'));
+          assert(css.includes('.page-buyer .buyer-footer'));
+          assert(css.includes('.page-login main'));
+          assert(css.includes('@media(max-width:650px)'));
+          assert(css.includes('prefers-reduced-motion'));
+          const cleaned=css.replace(/\/\*[\s\S]*?\*\//g,'').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g,'');
+          assert.equal((cleaned.match(/{/g)||[]).length,(cleaned.match(/}/g)||[]).length);
+          for(const p of paths){
+            const html=fs.readFileSync(p,'utf8');
+            assert(html.includes('href="/hogarstock-ui.css"'),p+': missing CSS');
+            assert(html.includes('<meta name="viewport"'),p+': missing viewport');
+            const blocks=[...html.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)];
+            assert(blocks.some(m=>m[1].trim()),p+': missing JS');
+            for(const block of blocks)if(block[1].trim())new vm.Script(block[1],{filename:p});
+            assert.equal((html.match(/<body/g)||[]).length,1);
+            assert.equal((html.match(/<\/body>/g)||[]).length,1);
+          }
+          const admin=fs.readFileSync(paths[0],'utf8');
+          const buyer=fs.readFileSync(paths[1],'utf8');
+          const login=fs.readFileSync(paths[2],'utf8');
+          for(const id of ['lista','waStatus','qrModal','qrcode','search','telefono',
+            'btnEnviar','btnRevocar','btnRevincularWA','contactosSeleccionados',
+            'estado','metricTotal','metricPending','metricAvailable']){
+            assert(admin.includes('id="'+id+'"'),"Admin id missing: "+id);
+          }
+          for(const id of ['lista','estado','syncEstado','btnFinalizar','pendingCount']){
+            assert(buyer.includes('id="'+id+'"'),"Buyer id missing: "+id);
+          }
+          assert(login.includes('id="login"')&&login.includes('id="password"')&&login.includes('id="boton"'));
+          assert(admin.includes('fetch("/api/iniciar-compra"'));
+          assert(admin.includes('fetch("/api/admin/contactos"'));
+          assert(admin.includes('fetch("/api/productos"'));
+          assert(admin.includes('fetch("/api/agotar/'));
+          assert(buyer.includes('new WebSocket('));
+          assert(buyer.includes('"/ws-comprador"'));
+          assert(buyer.includes('peticion("/api/comprado/"'));
+          assert(buyer.includes('peticion("/api/finalizar-compra"'));
+          assert(buyer.includes('document.getElementById("pendingCount").textContent'));
+          console.log('UI_CONTRACT_RESPONSIVE_JS_OK');
+          NODE
+      - name: Simular render administrativo sin infraestructura externa
+        shell: bash
+        run: |
+          node <<'NODE'
+          const a=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+          (async()=>{
+            const html=fs.readFileSync('public/index.html','utf8');
+            const scripts=[...html.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)].map(x=>x[1]).filter(Boolean);
+            a.equal(scripts.length,1);
+            const nodes=new Map();
+            const node=(id)=>{
+              if(!nodes.has(id))nodes.set(id,{
+                id,value:'',innerHTML:'',textContent:'',className:'',disabled:false,
+                style:{},replaceChildren(){},append(){},setAttribute(){},
+              });
+              return nodes.get(id);
+            };
+            const doc={getElementById:node,querySelectorAll:()=>[],createElement:tag=>node('created:'+tag)};
+            const fetchMock=async path=>({
+              ok:true,status:200,
+              json:async()=>path==='/api/admin/session'?{csrf:'test'}:
+                path==='/api/productos'?[]:
+                path==='/api/admin/contactos'?{telefonos:[]}:
+                path==='/api/whatsapp-status'?{conectado:false,qr:null}:{}
+            });
+            function MockSocket(){this.readyState=1;this.close=()=>{}}
+            MockSocket.OPEN=1;MockSocket.CONNECTING=0;
+            const x={document:doc,location:{protocol:'https:',host:'hogarstock.test.invalid',replace(){}},
+              WebSocket:MockSocket,fetch:fetchMock,console,
+              setInterval(){return 1},setTimeout(){return 2},clearTimeout(){},
+              encodeURIComponent,decodeURIComponent,confirm:()=>false,alert:()=>{}};
+            x.window=x;
+            vm.runInNewContext(scripts[0]+';globalThis.__harness={setData:datos=>{allProductos=datos;filtrarProductos();}};',x);
+            await new Promise(r=>setTimeout(r,30));
+            x.__harness.setData([
+              {id:1,nombre:'Peras',categoria:'Frutas',agotado:1},
+              {id:2,nombre:'Uvas',categoria:'Frutas',agotado:0},
+              {id:3,nombre:'Papas',categoria:'Verduras',agotado:1}
+            ]);
+            a.equal(node('metricTotal').textContent,'3');
+            a.equal(node('metricPending').textContent,'2');
+            a.equal(node('metricAvailable').textContent,'1');
+            a(node('lista').innerHTML.includes('Peras'));
+            a(node('lista').innerHTML.includes('Por comprar'));
+            a(node('lista').innerHTML.includes('Disponible'));
+            a(node('lista').innerHTML.includes('category-header'));
+            a.equal(node('btnEnviar').disabled,false);
+            console.log('ADMIN_METRICS_AND_CATEGORIES_RENDER_OK');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
+      - name: Sin secretos ni cambios de backend
+        shell: bash
+        run: |
+          test ! -f .env
+          test ! -f auth.json
+          git diff --name-only HEAD~1 HEAD || true
