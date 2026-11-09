@@ -10,6 +10,7 @@ const {crearGrantsV2}=require("./security/v2-grants");
 const {crearAuthTurso}=require("./whatsapp/wa-auth-turso");
 const {crearLeaseWa}=require("./whatsapp/wa-lease");
 const {permitirVinculacionNueva}=require("./whatsapp/wa-pairing-policy");
+const {prepararNuevaVinculacion}=require("./whatsapp/wa-relink");
 
 let makeWASocket;
 let initAuthCreds;
@@ -96,6 +97,8 @@ let waLease = null;
 let waLeaseTimer = null;
 let waLeasePerdido = false;
 let waLeaseRenovando = false;
+let waResetInProgress = false;
+let waCredencialesPendientes = Promise.resolve();
 
 function bloquearPorPerdidaDeLease() {
   if (waLeasePerdido) return;
@@ -232,7 +235,7 @@ async function iniciarWhatsApp() {
     let colaCredenciales = Promise.resolve();
     let persistenciaFallida = false;
     nuevoSocket.ev.on("creds.update", () => {
-      if (persistenciaFallida) return;
+      if (persistenciaFallida || waResetInProgress) return;
       colaCredenciales = colaCredenciales.then(() => saveCreds()).catch(() => {
         persistenciaFallida = true;
         if (sock === nuevoSocket) {
@@ -245,6 +248,7 @@ async function iniciarWhatsApp() {
         console.error("Fallo al persistir credenciales WhatsApp; sesión detenida.");
         try {nuevoSocket.end(new Error("WA_AUTH_PERSISTENCIA_FALLIDA"));} catch (_) {}
       });
+      waCredencialesPendientes = colaCredenciales;
     });
 
     nuevoSocket.ev.on("connection.update", (update) => {
@@ -394,7 +398,38 @@ app.get("/api/productos",http.admin,async(req,res)=>{
 });
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
-  res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null});
+  res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
+    requiereRevinculacion:!whatsappConectado && !sock &&
+      typeof errorWhatsApp==="string" && errorWhatsApp.includes("codigo 401")});
+});
+app.post("/api/admin/revincular-whatsapp",http.adminWrite,async(req,res)=>{
+  // La operacion solo ocurre despues de un clic y confirmacion expresa.
+  if(req.body?.confirmacion!=="REVINCULAR_SOLO_WHATSAPP")
+    return res.status(400).json({error:"CONFIRMACION_REQUERIDA"});
+  if(waResetInProgress || sock || whatsappConectado ||
+    !String(errorWhatsApp||"").includes("codigo 401") || !waLease || waLeasePerdido)
+    return res.status(409).json({error:"WHATSAPP_NO_ESTA_LISTO_PARA_REVINCULAR"});
+  waResetInProgress=true;
+  try {
+    // Antes de reemplazar la sesion rechazada, finalizar todas las escrituras
+    // pendientes del mismo proceso para que no reaparezcan claves antiguas.
+    await waCredencialesPendientes;
+    await cargarBaileys();
+    const snapshot=await prepararNuevaVinculacion({
+      db,lease:waLease,claveHex:process.env.HS_WA_AUTH_ENC_KEY,
+      initAuthCreds,BufferJSON
+    });
+    await liberarWaLeaseSinSocket();
+    errorWhatsApp=null;
+    intentosFallidos=0;
+    qrActual=null;
+    res.json({ok:true,credencialesArchivadas:snapshot.archivados});
+    // Se generara un QR nuevo a partir de las credenciales frescas.
+    setImmediate(()=>{void iniciarWhatsApp();});
+  }catch(err){
+    console.error("Fallo controlado al preparar nueva vinculacion WhatsApp:",err?.message?.startsWith("HS_")?err.message:"OPERACION_FALLIDA");
+    return res.status(409).json({error:"NO_SE_PUDO_PREPARAR_NUEVA_VINCULACION"});
+  }finally{waResetInProgress=false;}
 });
 app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
   try {
