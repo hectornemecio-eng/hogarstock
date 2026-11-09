@@ -215,6 +215,53 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
         telefonos:contactosCompra.rows.map(x=>String(x.telefono))});
     });
   }
+  // El administrador puede editar la lista aunque exista una compra compartida.
+  // Producto y lista se sincronizan dentro de la MISMA transaccion write.
+  async function alternarProducto({productoId}={}) {
+    exigirInit();
+    if(!Number.isSafeInteger(productoId)||productoId<1)
+      throw Error("HS_V2_PRODUCTO_INVALIDO");
+    return enTransaccion(db,async tx=>{
+      const r=await tx.execute({
+        sql:"SELECT agotado FROM productos WHERE id=? LIMIT 1",
+        args:[productoId]
+      });
+      if(!r.rows.length)throw Error("HS_V2_PRODUCTO_NO_ENCONTRADO");
+      const anterior=Number(r.rows[0].agotado);
+      if(anterior!==0&&anterior!==1)throw Error("HS_V2_PRODUCTO_ESTADO_INVALIDO");
+      const nuevo=anterior===1?0:1;
+      const actual=await tx.execute({
+        sql:"UPDATE productos SET agotado=? WHERE id=? AND agotado=?",
+        args:[nuevo,productoId,anterior]
+      });
+      if(Number(actual.rowsAffected)!==1)throw Error("HS_V2_CAMBIO_CONCURRENTE");
+
+      const abiertas=await tx.execute({
+        sql:`SELECT compra_id FROM ${CAB} WHERE estado='abierta' AND expira>? LIMIT 2`,
+        args:[reloj()]
+      });
+      if(abiertas.rows.length>1)throw Error("HS_V2_MULTIPLES_COMPRAS_ABIERTAS");
+      if(abiertas.rows.length===1) {
+        const compraId=String(abiertas.rows[0].compra_id);
+        if(nuevo===1){
+          await tx.execute({
+            sql:`INSERT INTO ${ITEMS}(compra_id,producto_id,estado)
+              VALUES(?,?,'pendiente') ON CONFLICT(compra_id,producto_id)
+              DO UPDATE SET estado='pendiente'`,
+            args:[compraId,productoId]
+          });
+        }else{
+          // Retirar un pendiente no equivale a marcarlo como comprado.
+          await tx.execute({
+            sql:`DELETE FROM ${ITEMS}
+              WHERE compra_id=? AND producto_id=? AND estado='pendiente'`,
+            args:[compraId,productoId]
+          });
+        }
+      }
+      return Object.freeze({nuevoEstado:nuevo,compraActiva:abiertas.rows.length===1});
+    });
+  }
   async function hayCompraAbierta() {
     exigirInit();
     const r=await db.execute({sql:`SELECT 1 AS existe FROM ${CAB}`+
@@ -230,6 +277,6 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       args:[compraId]});
     return Number(r.rowsAffected)===1;
   }
-  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta});
+  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta,alternarProducto});
 }
 module.exports={crearGrantsV2};
