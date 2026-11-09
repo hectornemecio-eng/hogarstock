@@ -69,6 +69,7 @@ const http=crearHTTPV2({identidad,
   origen:(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"")});
 const contactos=(process.env.WA_ALLOWED_NUMBERS||"").split(",").map(x=>x.trim()).filter(Boolean);
 const grants=crearGrantsV2({db,identidad,contactos});
+let envioListaEnCurso=false;
 server.on("upgrade",(req,socket,head)=>{
   if(!http.websocketAdmin(req)){
     socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
@@ -390,6 +391,9 @@ app.post("/api/admin/login",http.login);
 app.get("/api/admin/session",http.estadoAdmin);
 app.post("/api/admin/logout",http.logout);
 
+app.get("/api/admin/contactos",http.admin,(req,res)=>{
+  res.json({telefonos:grants.listarContactos()});
+});
 app.get("/api/productos",http.admin,async(req,res)=>{
   try {
     const q=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
@@ -451,20 +455,49 @@ app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
 });
 app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
   if(!whatsappConectado||!sock)return res.status(503).json({error:"WHATSAPP_NO_CONECTADO"});
-  let compra;
+  if(envioListaEnCurso)return res.status(409).json({error:"ENVIO_EN_PROGRESO"});
+  envioListaEnCurso=true;
   try {
-    compra=await grants.crearCompra({telefono:req.body?.telefono});
+    // Compatibilidad: numero unico o grupo de 1 a 10 contactos autorizados.
+    const input=Array.isArray(req.body?.telefonos)?req.body.telefonos:[req.body?.telefono];
+    const destinos=grants.validarDestinatarios(input);
+    const compra=await grants.prepararEnvio({telefono:destinos[0]});
     const base=(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"");
     const enlace=base+"/comprador.html#token="+encodeURIComponent(compra.token);
-    const mensaje="🛒 *Lista de compra*\n\n"+compra.nombres.map(x=>"- "+x).join("\n")+"\n\nAbre este enlace:\n"+enlace;
-    try {await enviarWhatsApp(compra.numero,mensaje);}
-    catch(error){
-      // Sin reenvíos automáticos, porque la entrega puede ser incierta.
-      await grants.revocar({compraId:compra.compraId});
-      return res.status(503).json({error:"ENVIO_NO_CONFIRMADO_GRANT_REVOCADO"});
+    const mensaje="🛒 *Lista de compra*\n\n"+compra.nombres.map(x=>"- "+x).join("\n")+
+      "\n\nAbre este enlace:\n"+enlace;
+    const enviados=[],yaEnviados=[],fallidos=[],inciertos=[];
+    for(let i=0;i<destinos.length;i++){
+      const numero=destinos[i],esOriginalNueva=compra.nueva && i===0;
+      // Los envios confirmados no se repiten: evitan mensajes duplicados.
+      if(!esOriginalNueva && await grants.yaEnviado({compraId:compra.compraId,telefono:numero})){
+        yaEnviados.push(numero);
+        continue;
+      }
+      try {await enviarWhatsApp(numero,mensaje);}
+      catch(_){
+        fallidos.push(numero);
+        if(esOriginalNueva){
+          // Si falla el primer envio no dejar una nueva compra inutilizable.
+          try{await grants.revocar({compraId:compra.compraId});}catch(_){}
+          return res.status(503).json({ok:false,error:"ENVIO_INICIAL_NO_CONFIRMADO",fallidos});
+        }
+        continue; // nunca reintentos automaticos de WhatsApp
+      }
+      if(!esOriginalNueva){
+        try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
+        catch(_){inciertos.push(numero);continue;}
+      }
+      enviados.push(numero);
     }
-    return res.json({ok:true,cantidad:compra.cantidad,compraId:compra.compraId});
+    const ok=enviados.length>0||yaEnviados.length>0;
+    return res.status(ok?200:503).json({
+      ok,compraId:compra.compraId,cantidad:compra.cantidad,compartida:!compra.nueva,
+      enviados,yaEnviados,fallidos,inciertos,
+      error:ok?null:"ENVIO_NO_CONFIRMADO"
+    });
   }catch(error){return resultadoPublico(res,error);}
+  finally{envioListaEnCurso=false;}
 });
 app.post("/api/admin/revocar-compra",http.adminWrite,async(req,res)=>{
   try {
@@ -496,11 +529,16 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
     const texto=cierre.faltan===0
       ? "✅ *Compra completada.* Todos los productos comprados."
       : "⚠️ *Compra finalizada.*\n\nPendientes:\n"+cierre.pendientes.map(x=>"- "+x).join("\n");
-    let enviada=false;
-    try {await enviarWhatsApp(cierre.telefono,texto);enviada=true;}
-    catch(error){console.error("HogarStock V2: notificación de cierre no confirmada.");}
-    // Nunca informar de envío correcto si no se confirmó.
-    res.json({ok:true,faltan:cierre.faltan,enviada});
+    const destinatarios=cierre.telefonos||[cierre.telefono];
+    let enviadas=0;
+    for(const numero of destinatarios){
+      try{await enviarWhatsApp(numero,texto);enviadas++;}
+      catch(_){console.error("HogarStock: una notificacion de cierre no confirmada.");}
+    }
+    // La compra se cierra para TODOS; sin mensajes automáticos duplicados.
+    res.json({ok:true,faltan:cierre.faltan,
+      enviada:enviadas===destinatarios.length,
+      notificados:enviadas,destinatarios:destinatarios.length});
   }catch(error){resultadoPublico(res,error);}
 });
 

@@ -81,13 +81,15 @@
         Volver a vincular WhatsApp
       </button>
       <div class="form-group">
-        <label>Contactos frecuentes</label>
-        <!-- Contactos privados: escribir el número autorizado en el campo. -->
-        <label for="telefono">Número de WhatsApp destino</label>
+        <label>Enviar la misma lista a uno o varios contactos</label>
+        <div id="contactosSeleccionados" style="display:grid;gap:.45rem;margin:.65rem 0 1rem">
+          <span style="font-size:.84rem;color:#6b7280">Cargando contactos autorizados...</span>
+        </div>
+        <label for="telefono">Otro número autorizado (opcional)</label>
         <input type="tel" id="telefono" class="input-tel" placeholder="Ej: 34600123456">
       </div>
-      <button id="btnEnviar" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista</button>
-<button id="btnRevocar" onclick="revocarUltima()" disabled>Revocar última invitación</button>
+      <button id="btnEnviar" class="btn-primary" onclick="enviarLista()" disabled>Enviar / compartir lista</button>
+<button id="btnRevocar" onclick="revocarUltima()" disabled>Cancelar compra compartida</button>
       <div id="estado"></div>
     </aside>
   </div>
@@ -119,7 +121,7 @@
     };
     const escapar=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     async function revocarUltima(){
-      if(!ultimaCompraId||!confirm("¿Revocar la última invitación de compra?"))return;
+      if(!ultimaCompraId||!confirm("¿Cancelar la compra? Se invalidara el enlace para TODOS los contactos."))return;
       const r=await fetch("/api/admin/revocar-compra",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({compraId:ultimaCompraId})});
       if(r.ok){ultimaCompraId=null;document.getElementById("btnRevocar").disabled=true;}
     }
@@ -249,21 +251,63 @@
       document.getElementById("btnEnviar").disabled = !allProductos.some(p => p.agotado);
     }
     async function toggleAgotado(id) { await fetch(`/api/agotar/${id}`, { method: "POST" }); }
-    async function enviarLista() {
-      const telefono = document.getElementById("telefono").value.trim();
-      if (!telefono) return alert("Introduce o selecciona un número de WhatsApp.");
-      const est = document.getElementById("estado");
-      const btn = document.getElementById("btnEnviar");
-      est.className = ""; est.style.display = "block"; est.textContent = "Enviando..."; btn.disabled = true;
+    async function cargarContactos() {
+      const cont=document.getElementById("contactosSeleccionados");
       try {
-        const res = await fetch("/api/iniciar-compra", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefono }) });
-        const data = await res.json();
-        if (data.ok) { ultimaCompraId=data.compraId; document.getElementById("btnRevocar").disabled=false; est.className = "ok"; est.textContent = `Lista enviada (${data.cantidad} productos).`; }
-        else { est.className = "err"; est.textContent = `❌ ${data.error}`; }
-      } catch (err) { est.className = "err"; est.textContent = "❌ Error de conexión."; }
-      finally { btn.disabled = false; }
+        const r=await fetch("/api/admin/contactos");
+        if(!r.ok)throw Error("CONTACTOS_NO_DISPONIBLES");
+        const d=await r.json();
+        cont.replaceChildren();
+        if(!Array.isArray(d.telefonos)||!d.telefonos.length){
+          cont.textContent="No hay contactos autorizados.";
+          return;
+        }
+        for(const numero of d.telefonos){
+          const label=document.createElement("label");
+          label.style.cssText="display:flex;align-items:center;gap:.6rem;font-size:.9rem;font-weight:500;cursor:pointer";
+          const cb=document.createElement("input");
+          cb.type="checkbox";cb.value=numero;
+          cb.style.cssText="width:18px;height:18px;accent-color:#059669";
+          const span=document.createElement("span");
+          span.textContent=numero;label.append(cb,span);cont.append(label);
+        }
+      }catch(_){cont.textContent="Introduce manualmente un número autorizado.";}
+    }
+    async function enviarLista() {
+      const seleccionados=[...document.querySelectorAll("#contactosSeleccionados input:checked")].map(x=>x.value);
+      const manual=document.getElementById("telefono").value.trim();
+      if(manual)seleccionados.push(manual);
+      const telefonos=[...new Set(seleccionados)];
+      if(!telefonos.length)return alert("Selecciona al menos un contacto autorizado.");
+      const est=document.getElementById("estado");
+      const btn=document.getElementById("btnEnviar");
+      est.className="";est.style.display="block";est.textContent="Enviando o compartiendo...";btn.disabled=true;
+      try {
+        const res=await fetch("/api/iniciar-compra",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({telefonos})
+        });
+        const d=await res.json();
+        if(d.ok){
+          ultimaCompraId=d.compraId;
+          document.getElementById("btnRevocar").disabled=false;
+          const n=d.enviados?.length||0,anteriores=d.yaEnviados?.length||0;
+          const fallos=d.fallidos?.length||0,inciertos=d.inciertos?.length||0;
+          est.className=(fallos||inciertos)?"err":"ok";
+          est.textContent="Lista compartida. Envios confirmados: "+n+
+            ". Ya enviados previamente: "+anteriores+
+            (fallos?". Envios fallidos: "+fallos+".":"")+
+            (inciertos?". Envios de estado incierto: "+inciertos+" (comprueba el telefono antes de reintentar).":"");
+        }else{
+          est.className="err";
+          est.textContent="No se pudo confirmar el envio: "+(d.error||"ERROR")+
+            ". Comprueba el telefono antes de reintentar.";
+        }
+      }catch(_){est.className="err";est.textContent="Error de conexión. Comprueba si llegó antes de reintentar.";}
+      finally{btn.disabled=false;}
     }
     sincronizarCatalogo();
+    cargarContactos();
     conectarWS();
   </script>
 </body>

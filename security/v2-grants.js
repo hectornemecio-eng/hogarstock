@@ -4,6 +4,7 @@
 const crypto = require("node:crypto");
 const CAB = "hs_v2_security_grants";
 const ITEMS = "hs_v2_security_items";
+const ENVIOS = "hs_v2_security_envios";
 const DDL = Object.freeze([
   `CREATE TABLE IF NOT EXISTS ${CAB} (`+
     `compra_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE,`+
@@ -15,6 +16,10 @@ const DDL = Object.freeze([
     ` producto_id INTEGER NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente'`+
     ` CHECK(estado IN ('pendiente','comprado')),`+
     ` PRIMARY KEY(compra_id,producto_id))`,
+  `CREATE TABLE IF NOT EXISTS ${ENVIOS} (`+
+    `compra_id TEXT NOT NULL REFERENCES ${CAB}(compra_id),`+
+    ` telefono TEXT NOT NULL, enviado INTEGER NOT NULL,`+
+    ` PRIMARY KEY(compra_id,telefono))`,
 ]);
 function validarContacto(telefono, contactos) {
   const tel = String(telefono??"").replace(/[\s+()-]/g, "");
@@ -44,11 +49,18 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
   // Sin contactos configurados, compras quedan denegadas; la web puede iniciar.
   const permitidos = new Set(contactos.map(x=>validarContacto(x,new Set([String(x)]))));
   let inicializado=false;
+  function listarContactos() {return [...permitidos];}
+  function validarDestinatarios(telefonos) {
+    if(!Array.isArray(telefonos)||telefonos.length<1||telefonos.length>10)
+      throw Error("HS_V2_DESTINATARIOS_INVALIDOS");
+    return [...new Set(telefonos.map(x=>validarContacto(x,permitidos)))];
+  }
   function exigirInit() {if(!inicializado)throw Error("HS_V2_GRANTS_NO_INICIALIZADOS");}
   async function init() {
     // No permitir tabla previa con estructura inesperada.
     for(const [tabla,columnas] of [[CAB,["compra_id","token_hash","telefono","creada","expira","estado"]],
-      [ITEMS,["compra_id","producto_id","estado"]]]) {
+      [ITEMS,["compra_id","producto_id","estado"]],
+      [ENVIOS,["compra_id","telefono","enviado"]]]) {
       const r=await db.execute({sql:"SELECT name FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",args:[tabla]});
       if(r.rows.length) {
         try {await db.execute(`SELECT ${columnas.join(",")} FROM ${tabla} LIMIT 0`);}
@@ -86,6 +98,61 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       return Object.freeze({compraId:id,token:grant.token,numero, cantidad:r.rows.length,
         nombres:r.rows.map(x=>String(x.nombre)),exp:grant.exp});
     });
+  }
+  // Compartir la compra activa: todos los destinatarios reciben el MISMO
+  // enlace vigente, sin crear una compra nueva ni reiniciar sus productos.
+  async function prepararEnvio({telefono}={}) {
+    exigirInit();
+    const numero=validarContacto(telefono,permitidos);
+    const active=await db.execute({
+      sql:`SELECT compra_id,token_hash,telefono,expira FROM ${CAB}
+        WHERE estado='abierta' AND expira>? ORDER BY creada DESC LIMIT 1`,
+      args:[reloj()]
+    });
+    if(!active.rows.length) {
+      return Object.freeze({...await crearCompra({telefono:numero}),nueva:true});
+    }
+    const anterior=active.rows[0], compraId=String(anterior.compra_id);
+    const grant=identidad.recuperarComprador({
+      idCompra:compraId,exp:Number(anterior.expira),hash:String(anterior.token_hash)
+    });
+    const items=await db.execute({
+      sql:`SELECT p.nombre FROM ${ITEMS} gi JOIN productos p ON p.id=gi.producto_id
+        WHERE gi.compra_id=? AND gi.estado='pendiente' AND p.agotado=1
+        ORDER BY p.categoria,p.nombre,p.id`,args:[compraId]
+    });
+    if(!items.rows.length)throw Error("HS_V2_SIN_FALTANTES");
+    return Object.freeze({
+      compraId,token:grant.token,numero,cantidad:items.rows.length,
+      nombres:items.rows.map(x=>String(x.nombre)),exp:grant.exp,nueva:false
+    });
+  }
+  async function yaEnviado({compraId,telefono}={}) {
+    exigirInit();
+    const numero=validarContacto(telefono,permitidos);
+    const r=await db.execute({
+      sql:`SELECT 1 AS existe FROM ${CAB} WHERE compra_id=? AND telefono=?
+        UNION SELECT 1 AS existe FROM ${ENVIOS} WHERE compra_id=? AND telefono=?
+        LIMIT 1`,
+      args:[compraId,numero,compraId,numero]
+    });
+    return r.rows.length>0;
+  }
+  async function registrarEnviado({compraId,telefono}={}) {
+    exigirInit();
+    const numero=validarContacto(telefono,permitidos);
+    if(typeof compraId!=="string"||!/^[a-f0-9]{48}$/.test(compraId))
+      throw Error("HS_V2_COMPRA_ID_INVALIDO");
+    const r=await db.execute({
+      sql:`INSERT INTO ${ENVIOS}(compra_id,telefono,enviado)
+        SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM ${CAB}
+        WHERE compra_id=? AND estado='abierta' AND expira>?)
+        ON CONFLICT(compra_id,telefono) DO NOTHING`,
+      args:[compraId,numero,reloj(),compraId,reloj()]
+    });
+    if(Number(r.rowsAffected)!==1 && !(await yaEnviado({compraId,telefono:numero})))
+      throw Error("HS_V2_COMPRA_CERRADA_O_EXPIRADA");
+    return true;
   }
   async function validarVigencia(tx,grant) {
     if(!grant || typeof grant.hash!=="string"||typeof grant.idCompra!=="string") {
@@ -138,7 +205,14 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
         ` WHERE compra_id=? AND token_hash=? AND estado='abierta' AND expira>?`,
         args:[grant.idCompra,grant.hash,reloj()]});
       if(Number(u.rowsAffected)!==1)throw Error("HS_V2_COMPRA_CAMBIO_CONCURRENTE");
-      return Object.freeze({faltan:pendientes.length,pendientes,telefono:String(g.telefono)});
+      const contactosCompra=await tx.execute({
+        sql:`SELECT telefono FROM ${CAB} WHERE compra_id=?
+          UNION SELECT telefono FROM ${ENVIOS} WHERE compra_id=? ORDER BY telefono`,
+        args:[grant.idCompra,grant.idCompra]
+      });
+      return Object.freeze({faltan:pendientes.length,pendientes,
+        telefono:String(g.telefono),
+        telefonos:contactosCompra.rows.map(x=>String(x.telefono))});
     });
   }
   async function hayCompraAbierta() {
@@ -156,6 +230,6 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       args:[compraId]});
     return Number(r.rowsAffected)===1;
   }
-  return Object.freeze({init,crearCompra,listar,marcar,finalizar,revocar,hayCompraAbierta});
+  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta});
 }
 module.exports={crearGrantsV2};
