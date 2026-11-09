@@ -57,8 +57,17 @@ function crearCanalCompradores({WebSocketServer,identidad,grants,origen,maxConex
         clearTimeout(limite);
         ws.hsGrant=grant; // No guardar ni reenviar el token original.
         ws.send(JSON.stringify({type:"sincronizar"}));
-      }catch(_){
-        if(ws.readyState===1)ws.close(1008,"Compra no autorizada");
+      }catch(error){
+        if(ws.readyState!==1)return;
+        const motivo=String(error?.message||"");
+        if(motivo==="AUTH_INVALIDA" ||
+          motivo.includes("NO_AUTORIZADO") ||
+          motivo.includes("CERRADA_O_EXPIRADA")){
+          ws.close(1008,"Compra no autorizada");
+        }else{
+          // Un fallo temporal de Turso NO debe invalidar el enlace del comprador.
+          ws.close(1013,"Servidor temporalmente no disponible");
+        }
       }
     });
   });
