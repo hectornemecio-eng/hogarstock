@@ -1,0 +1,52 @@
+name: HogarStock v370 - libSQL cliente real aislado
+on:
+  push:
+    branches:
+      - laboratorio-v370-libsql-2026-11-09
+permissions:
+  contents: read
+jobs:
+  libsql-sin-credenciales:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7060b27ef18de9de73091be3963e3c37cc2db246
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias locales solo para SQLite ficticia
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-v370
+          printf '{"name":"hs-libsql-lab","private":true,"version":"1.0.0"}\n' > qa-v370/package.json
+          npm install --prefix qa-v370 --ignore-scripts --no-audit --no-fund --save-exact @libsql/client@0.14.0
+          node - <<'JS'
+          const {createClient}=require('./qa-v370/node_modules/@libsql/client');
+          const fs=require('node:fs');
+          const path=require('node:path');
+          (async()=>{
+            const fn=path.resolve('qa-v370/lab.sqlite');
+            const db=createClient({url:'file:'+fn});
+            await db.execute('CREATE TABLE t(id TEXT PRIMARY KEY, v TEXT NOT NULL)');
+            await db.batch([{sql:'INSERT INTO t VALUES(?,?)',args:['x','a']},{sql:'UPDATE t SET v=? WHERE id=?',args:['b','x']}],'write');
+            const r=await db.execute({sql:'SELECT v FROM t WHERE id=?',args:['x']});
+            if(r.rows[0].v!=='b')throw Error('LIBSQL_FILE_BATCH_FAILED');
+            db.close();
+            for(const suffix of ['','-wal','-shm'])try{fs.rmSync(fn+suffix)}catch{}
+            console.log('LIBSQL_REAL_FILE_BATCH_OK');
+          })().catch(e=>{console.error(e.code||e.message);process.exit(1)})
+          JS
+      - name: Exportar solo biblioteca sin bases de datos ni secretos
+        uses: actions/upload-artifact@v4
+        with:
+          name: libsql-v370-runtime-nodes22-linux
+          path: |
+            qa-v370/node_modules/
+            qa-v370/package.json
+            qa-v370/package-lock.json
+          retention-days: 1
+          if-no-files-found: error
