@@ -41,7 +41,8 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       !Array.isArray(contactos)) {
     throw Error("HS_V2_GRANTS_CONFIG_INVALIDA");
   }
-  // Sin contactos configurados, compras quedan denegadas; la web puede iniciar.\n  const permitidos = new Set(contactos.map(x=>validarContacto(x,new Set([String(x)]))));
+  // Sin contactos configurados, compras quedan denegadas; la web puede iniciar.
+  const permitidos = new Set(contactos.map(x=>validarContacto(x,new Set([String(x)]))));
   let inicializado=false;
   function exigirInit() {if(!inicializado)throw Error("HS_V2_GRANTS_NO_INICIALIZADOS");}
   async function init() {
