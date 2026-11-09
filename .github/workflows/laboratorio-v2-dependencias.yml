@@ -1,0 +1,47 @@
+name: HogarStock V2 - dependencias completas sin produccion
+
+on:
+  push:
+    branches:
+      - laboratorio-v2-runtime-2026-11-09
+
+permissions:
+  contents: read
+
+jobs:
+  dependencias-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout V2 exacto
+        uses: actions/checkout@v4
+        with:
+          ref: 7060b27ef18de9de73091be3963e3c37cc2db246
+          persist-credentials: false
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verificacion de origen
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 7060b27ef18de9de73091be3963e3c37cc2db246
+          test ! -f .env
+          test ! -d auth_info_baileys
+          test ! -f package-lock.json
+
+      - name: Instalacion de dependencias V2 en runner efimero
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Smoke test de modulos sin conectar Turso ni WhatsApp
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "require('express'); require('ws'); require('@libsql/client');require('dotenv');console.log('DEPENDENCIAS_COMMONJS_OK')"
+          node --input-type=module -e "const m=await import('@whiskeysockets/baileys');if(typeof m.default!=='function'||typeof m.useMultiFileAuthState!=='function'||typeof m.fetchLatestWaWebVersion!=='function')throw Error('EXPORTS_BAILEYS_INVALIDOS');console.log('BAILEYS_IMPORT_ESM_OK')"
+          npm ls --depth=0
+          sha256sum package-lock.json
+          echo 'RESULTADO_DEPENDENCIAS_V2=APROBADO_SIN_CONEXIONES_REALES'
