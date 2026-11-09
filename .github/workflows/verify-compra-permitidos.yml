@@ -36,9 +36,11 @@ jobs:
           node <<'NODE'
           const a=require('node:assert/strict');
           const {createClient}=require('@libsql/client');
+          const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
           const {crearGrantsV2}=require('./security/v2-grants');
           (async()=>{
-            const db=createClient({url:'file::memory:'});
+            const archivo=path.join(os.tmpdir(),'hogarstock_ci_compras_'+process.pid+'.db');
+            const db=createClient({url:'file:'+archivo});
             try{
               await db.execute('CREATE TABLE productos(id INTEGER PRIMARY KEY,nombre TEXT,categoria TEXT,agotado INTEGER)');
               await db.batch([
@@ -68,7 +70,7 @@ jobs:
               a.equal(Number(result.rows[0].agotado),0);
               a.equal(Number(result.rows[1].agotado),0);
               console.log('COMPRA_LIBSQL_CREAR_LISTAR_MARCAR_CERRAR_OK');
-            }finally{db.close()}
+            }finally{db.close();try{fs.unlinkSync(archivo)}catch{}}
           })().catch(e=>{console.error('TEST_FAILED',e.code||e.name||'unknown',e.message?.slice(0,170));process.exitCode=1});
           NODE
       - name: Verificar no secretos ni datos reales
