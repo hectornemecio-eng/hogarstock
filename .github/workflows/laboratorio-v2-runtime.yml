@@ -1,0 +1,66 @@
+name: HogarStock V2 - laboratorio de integracion aislado
+
+on:
+  push:
+    branches:
+      - laboratorio-v2-runtime-2026-11-09
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preparar-baseline-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener commit V2 auditado
+        uses: actions/checkout@v4
+        with:
+          ref: 7060b27ef18de9de73091be3963e3c37cc2db246
+          persist-credentials: false
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verificar commit y ausencia de secretos
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "7060b27ef18de9de73091be3963e3c37cc2db246"
+          test ! -e .env
+          test ! -e auth_info_baileys
+          test ! -e node_modules
+          git hash-object server.js | grep -qx cff4162ad4a9d6bdb277cc1ed41719aafc18e10c
+          git hash-object public/index.html | grep -qx 0495355ee172d86dfb581f61f098d66e380b22b0
+          git hash-object public/comprador.html | grep -qx c885c99e6fc0102707b81245fe1334e890c5904b
+
+      - name: Construir archivo de fuente sin .git ni secretos
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-dist/FUENTE_V2 ci-dist/RUNTIME
+          cp server.js db.js package.json ci-dist/FUENTE_V2/
+          cp -R public ci-dist/FUENTE_V2/
+          printf '%s\n' 7060b27ef18de9de73091be3963e3c37cc2db246 > ci-dist/FUENTE_V2/ORIGEN_COMMIT.txt
+
+      - name: Instalar solo Express y WS para QA - sin Baileys ni Turso
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"name":"hogarstock-qa-runtime","private":true,"version":"1.0.0","dependencies":{"express":"4.21.2","ws":"8.18.0"}}' > ci-dist/RUNTIME/package.json
+          npm install --prefix ci-dist/RUNTIME --ignore-scripts --no-audit --no-fund
+          node -e "require('./ci-dist/RUNTIME/node_modules/express');require('./ci-dist/RUNTIME/node_modules/ws');console.log('RUNTIME_EXPRESS_WS_OK')"
+          test ! -e ci-dist/FUENTE_V2/.env
+          test ! -e ci-dist/FUENTE_V2/auth_info_baileys
+
+      - name: Publicar paquete temporal QA para pruebas locales aisladas
+        uses: actions/upload-artifact@v4
+        with:
+          name: hogarstock-v2-runtime-ficticio
+          path: ci-dist/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
