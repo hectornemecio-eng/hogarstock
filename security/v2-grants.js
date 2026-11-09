@@ -38,10 +38,10 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
   if (!db || typeof db.execute!=="function"||typeof db.transaction!=="function"||
       typeof db.batch!=="function"||!identidad ||
       typeof identidad.emitirComprador!=="function" ||
-      !Array.isArray(contactos) || contactos.length===0) {
+      !Array.isArray(contactos)) {
     throw Error("HS_V2_GRANTS_CONFIG_INVALIDA");
   }
-  const permitidos = new Set(contactos.map(x=>validarContacto(x,new Set([String(x)]))));
+  // Sin contactos configurados, compras quedan denegadas; la web puede iniciar.\n  const permitidos = new Set(contactos.map(x=>validarContacto(x,new Set([String(x)]))));
   let inicializado=false;
   function exigirInit() {if(!inicializado)throw Error("HS_V2_GRANTS_NO_INICIALIZADOS");}
   async function init() {
