@@ -112,6 +112,19 @@ function crearIdentidadV2({entorno, reloj = Date.now, aleatorio = crypto.randomB
     const token=`${body}.${sello(buyerSecret,body)}`;
     return Object.freeze({token,hash:crypto.createHash("sha256").update(token).digest("hex"),exp});
   }
+  // Reconstruye un enlace antiguo sin almacenar tokens en texto claro.
+  // El hash guardado valida que la invitacion original no fue alterada.
+  function recuperarComprador({idCompra, exp, hash}={}) {
+    if(typeof idCompra!=="string"||!/^[a-f0-9]{48}$/.test(idCompra)||
+       !Number.isSafeInteger(exp)||exp<=reloj()||String(exp).length!==13||
+       typeof hash!=="string"||!/^[a-f0-9]{64}$/i.test(hash))
+      throw Error("HS_V2_RECUPERAR_GRANT_INVALIDO");
+    const body=`b1.${exp}.${idCompra}`;
+    const token=`${body}.${sello(buyerSecret,body)}`;
+    const tokenHash=crypto.createHash("sha256").update(token).digest("hex");
+    if(!safeMacEqual(tokenHash,hash)) throw Error("HS_V2_RECUPERAR_GRANT_NO_COINCIDE");
+    return Object.freeze({token,hash:tokenHash,exp});
+  }
   function leerComprador(header) {
     if (typeof header!=="string" || header.length>256 || !header.startsWith("Bearer "))return null;
     const token=header.slice(7);
@@ -122,7 +135,7 @@ function crearIdentidadV2({entorno, reloj = Date.now, aleatorio = crypto.randomB
     return Object.freeze({hash:crypto.createHash("sha256").update(token).digest("hex"),idCompra:parts[2],exp:Number(parts[1])});
   }
   return Object.freeze({validarPassword,emitirAdmin,leerAdmin,revocarAdmin,cookieHeader,borrarCookie,
-    emitirComprador,leerComprador});
+    emitirComprador,recuperarComprador,leerComprador});
 }
 module.exports={crearIdentidadV2,adminHash,generarMaterial,safeMacEqual,
   COOKIE_NAME,parseCookies};
