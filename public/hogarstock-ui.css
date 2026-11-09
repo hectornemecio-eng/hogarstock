@@ -261,6 +261,9 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 .page-buyer #syncEstado.warn{background:#fff3e1;color:#945d1b}
 .page-buyer #syncEstado.err{background:#fff0ee;color:#a23d3a}
 .page-buyer .container{width:min(690px,100%);margin:0 auto;padding:24px 18px calc(136px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:11px}
+.page-buyer #lista{display:flex;flex-direction:column;gap:10px;min-width:0}
+.page-buyer .product-item{appearance:none;width:100%;font:inherit;text-align:left}
+.page-buyer .product-item:disabled{opacity:.65;cursor:not-allowed}
 .page-buyer .buyer-overview{
   display:flex;justify-content:space-between;align-items:center;gap:16px;
   border:1px solid var(--line);border-radius:16px;background:var(--surface);
