@@ -1,0 +1,61 @@
+name: HogarStock v3.83 - validar y preparar rama
+on:
+  push:
+    branches: [preparacion-hogarstock-v383]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Reconstruir fuente auditada
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,hashlib,io,zipfile,pathlib
+          b64=pathlib.Path('hogarstock-v383.source.b64').read_text()
+          data=base64.b64decode(b64,validate=False)
+          actual=hashlib.sha256(data).hexdigest()
+          expected='5664dbd9f4981509fab372fe40a8dde4e7558cdf8537135df5a962183d4e9581'
+          if actual!=expected: raise SystemExit('ZIP_HASH_INVALIDO')
+          z=zipfile.ZipFile(io.BytesIO(data))
+          names=z.namelist()
+          if len(names)!=17 or len(set(names))!=17:raise SystemExit('ZIP_FILES_INVALIDOS')
+          for name in names:
+              p=pathlib.PurePosixPath(name)
+              if p.is_absolute() or '..' in p.parts or name.startswith('.github/') or name.startswith('node_modules/') or name.endswith('.env'):raise SystemExit('PATH_INVALIDO')
+              pathlib.Path(name).parent.mkdir(parents=True,exist_ok=True)
+              pathlib.Path(name).write_bytes(z.read(name))
+          print('FUENTE_VERIFICADA=SI',len(names))
+          PY
+          test -f package-lock.json
+          test -f server.js
+          test -f PRUEBA_COMPATIBILIDAD_V383.cjs
+          ! grep -RnE 'PRAGMA[[:space:]]+(table_info|schema_version)' --include='*.js' db.js server.js security/ whatsapp/
+          true
+      - name: Instalacion reproducible y prueba SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --check server.js
+          node --check db.js
+          node PRUEBA_COMPATIBILIDAD_V383.cjs
+          npm ls --depth=0
+      - name: Consolidar codigo sin secretos en rama
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f hogarstock-v383.source.b64
+          git config user.name 'HogarStock CI'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A package.json package-lock.json .node-version db.js server.js security/ whatsapp/ public/ PRUEBA_COMPATIBILIDAD_V383.cjs hogarstock-v383.source.b64
+          git diff --cached --check
+          git commit -m 'feat: implementar HogarStock V3 segura desde fuente auditada'
+          git push origin HEAD:preparacion-hogarstock-v383
