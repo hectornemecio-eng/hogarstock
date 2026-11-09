@@ -1,0 +1,53 @@
+name: HogarStock - sincronizacion compradores v3.94
+on:
+  push:
+    branches: [feat-sync-compradores-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y seguridad de rutas
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check security/v2-grants.js
+          node --check security/v2-buyer-ws.js
+          node --check tests/sync-buyers.test.js
+          node <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm'),a=require('node:assert/strict');
+          const ui=fs.readFileSync('public/comprador.html','utf8');
+          for(const match of ui.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)){
+            if(match[1].trim())new vm.Script(match[1]);
+          }
+          const srv=fs.readFileSync('server.js','utf8');
+          const hub=fs.readFileSync('security/v2-buyer-ws.js','utf8');
+          a(srv.includes('compradoresWS.aceptaUpgrade(req)'));
+          a(srv.includes('compradoresWS.notificar({compraId:req.hsCompra.idCompra})'));
+          a(srv.includes('compradoresWS.notificar({compraId:req.hsCompra.idCompra,tipo:"cerrada"})'));
+          a(hub.includes('req?.headers?.origin!==origen'));
+          a(hub.includes('await grants.listar({grant})'));
+          a(hub.includes('maxPayload:1024'));
+          a(ui.includes('new WebSocket('));
+          a(ui.includes('type:"auth",token:grant'));
+          a(ui.includes('visibilitychange'));
+          a(ui.includes('ultimoSync'));
+          a(ui.includes('Otro comprador ya retiró este producto'));
+          console.log('SYNC_BUYERS_SECURITY_UI_SYNTAX_OK');
+          NODE
+      - name: Test real de WebSocket y libSQL con dos compradores
+        run: node --test tests/sync-buyers.test.js
+      - name: Sin credenciales privadas
+        run: |
+          test ! -f .env
+          test ! -f auth.json
