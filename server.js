@@ -329,6 +329,13 @@ async function iniciarWhatsApp() {
     );
 
     anunciarEstado();
+    // En despliegue sin interrupciones, el proceso anterior puede conservar el
+    // lease durante unos segundos. Solo reintentar: nunca robarlo ni borrar datos.
+    if (errorWhatsApp === "HS_WA_LEASE_EN_USO") {
+      console.warn("WhatsApp: esperando liberacion de lease por la instancia anterior.");
+      programarReconexion();
+      return;
+    }
     // Datos cifrados irrecuperables o esquema incompatible: no reintentar
     // indefinidamente ni crear una sesión nueva sobre credenciales dañadas.
     if (/^HS_WA_(AUTH_(CIFRADO_INVALIDO|PARCIAL_SIN_CREDENCIALES|SIN_SESION_MIGRADA|ESQUEMA_INCOMPATIBLE|CONFIG_INVALIDA)|LEASE_(PERDIDO|EN_USO|ESQUEMA_INCOMPATIBLE))/.test(errorWhatsApp)) {
