@@ -4,19 +4,26 @@
  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="referrer" content="no-referrer">
  <title>HogarStock · Acceso administrativo</title>
- <style>
- body{font:16px system-ui,sans-serif;background:#f5f7f7;color:#1c302a;margin:0;display:grid;place-items:center;min-height:100vh}
- main{box-sizing:border-box;background:white;border:1px solid #d6e2db;border-radius:16px;padding:28px;max-width:440px;width:calc(100% - 40px)}
- label{display:block;margin-bottom:8px}input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border-radius:9px}
- input{border:1px solid #869990}button{margin-top:15px;background:#08735b;color:white;border:0;cursor:pointer}
- #estado{min-height:28px;color:#8a2828}button:disabled{opacity:.6}
- </style>
+ <link rel="stylesheet" href="/hogarstock-ui.css">
+
 </head>
-<body>
-<main><h1>HogarStock</h1><p>Acceso administrativo protegido</p>
- <form id="login"><label for="password">Contraseña</label>
- <input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="200">
- <button type="submit" id="boton">Entrar</button></form><p id="estado" role="status"></p>
+<body class="page-login">
+<main>
+ <div class="brand">
+   <span class="brand-mark" aria-hidden="true">HS</span>
+   <span><span class="brand-name">HogarStock</span><span class="brand-caption">Inventario compartido</span></span>
+ </div>
+ <p class="eyebrow">Acceso privado</p>
+ <h1 class="login-title">Bienvenido de nuevo</h1>
+ <p class="login-caption">Accede al inventario del hogar y gestiona tus listas compartidas.</p>
+ <form id="login">
+   <label for="password">Contraseña de administrador</label>
+   <input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="200"
+          placeholder="Introduce tu contraseña">
+   <button type="submit" id="boton">Entrar a HogarStock</button>
+ </form>
+ <p id="estado" role="status" aria-live="polite"></p>
+ <p class="login-foot">Tu inventario, tus contactos, tu espacio privado.</p>
 </main>
 <script>
 "use strict";
