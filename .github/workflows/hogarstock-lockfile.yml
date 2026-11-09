@@ -29,7 +29,7 @@ jobs:
           test ! -f package-lock.json
           test ! -f .env
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node -e "const fs=require('fs');const p=require('./package.json'),l=require('./package-lock.json');if(l.lockfileVersion!==3||JSON.stringify(p.dependencies)!==JSON.stringify(l.packages[''].dependencies))throw Error('LOCKFILE_MISMATCH');console.log('LOCKFILE_CONTRACT_OK')"
+          node -e "const fs=require('fs');const p=require('./package.json'),l=require('./package-lock.json');if(l.lockfileVersion!==3||Object.keys(p.dependencies).some(k=>l.packages[''].dependencies?.[k]!==p.dependencies[k])||Object.keys(l.packages[''].dependencies||{}).length!==Object.keys(p.dependencies).length)throw Error('LOCKFILE_MISMATCH');console.log('LOCKFILE_CONTRACT_OK')"
           npm ci --ignore-scripts --no-audit --no-fund
           node -e "require('express');require('ws');require('@libsql/client');require('dotenv');console.log('NODE22_DEPS_OK')"
           node --input-type=module -e "const b=await import('@whiskeysockets/baileys');if(typeof b.default!=='function'||typeof b.initAuthCreds!=='function')throw Error('BAILEYS_EXPORTS');console.log('NODE22_BAILEYS_OK')"
