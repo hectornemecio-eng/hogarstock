@@ -11,6 +11,10 @@ permissions:
 jobs:
   dependencias-v2:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.11.0', '22']
     timeout-minutes: 15
     steps:
       - name: Checkout V2 exacto
@@ -22,7 +26,7 @@ jobs:
       - name: Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
 
       - name: Verificacion de origen
         shell: bash
