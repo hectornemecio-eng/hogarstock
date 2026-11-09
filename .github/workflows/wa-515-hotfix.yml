@@ -1,0 +1,49 @@
+name: HogarStock - correccion WA 515
+
+on:
+  push:
+    branches: [hotfix-wa-515-2026-11-09]
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalacion reproducible sin scripts de terceros
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y contrato de reinicio seguro
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check whatsapp/wa-auth-turso.js
+          node --check whatsapp/wa-lease.js
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const s = fs.readFileSync('server.js', 'utf8');
+          assert(s.includes('codigo === DisconnectReason.restartRequired'));
+          assert(s.includes('void colaCredenciales.then(() => {'));
+          assert(s.includes('if (persistenciaFallida || waLeasePerdido) return;'));
+          assert(s.includes('void iniciarWhatsApp();'));
+          assert(s.includes('if (codigo === DisconnectReason.loggedOut)'));
+          assert(s.includes('if(!soloLaboratorio) void iniciarWhatsApp();'));
+          assert(!s.includes('console.log(state.creds)'));
+          console.log('HOTFIX_515_CONTRACT_OK');
+          NODE
+      - name: No secrets committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f .env
+          test ! -f auth.json
+          test ! -d auth_info_baileys
