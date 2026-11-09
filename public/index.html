@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HogarStock · Admin</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="/vendor/qrcode.min.js"></script>
   <style>
     :root { --primary: #10b981; --primary-hover: #059669; --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --text-muted: #6b7280; --border: #e5e7eb; --warning: #f59e0b; --warning-bg: #fffbeb; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,15 +78,12 @@
       <div id="waStatus" class="wa-status wa-off"><div class="dot"></div> WhatsApp: Comprobando...</div>
       <div class="form-group">
         <label>Contactos frecuentes</label>
-        <div class="contactos-rapidos">
-          <button class="btn-contacto" onclick="setTel('34674278783')">Hector</button>
-          <button class="btn-contacto" onclick="setTel('34674280140')">Adriana</button>
-          <button class="btn-contacto" onclick="setTel('34674919790')">Xiomara</button>
-        </div>
+        <!-- Contactos privados: escribir el número autorizado en el campo. -->
         <label for="telefono">Número de WhatsApp destino</label>
         <input type="tel" id="telefono" class="input-tel" placeholder="Ej: 34600123456">
       </div>
       <button id="btnEnviar" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista</button>
+<button id="btnRevocar" onclick="revocarUltima()" disabled>Revocar última invitación</button>
       <div id="estado"></div>
     </aside>
   </div>
@@ -98,14 +95,64 @@
     </div>
   </div>
   <script>
+    let ultimaCompraId=null;
+    let adminCsrf="";
+    const fetchOriginal=window.fetch.bind(window);
+    const accesoAdmin=fetchOriginal("/api/admin/session",{cache:"no-store"}).then(async r=>{
+      if(!r.ok){location.replace("/admin-login.html");return false;}
+      const body=await r.json();
+      adminCsrf=body.csrf;
+      return true;
+    }).catch(()=>{location.replace("/admin-login.html");return false;});
+    window.fetch=async(url,options={})=>{
+      const listo=await accesoAdmin;
+      if(!listo)throw Error("ACCESO_ADMIN_REQUERIDO");
+      const encabezados={...(options.headers||{})};
+      if((options.method||"GET").toUpperCase()!=="GET")encabezados["X-HS-CSRF"]=adminCsrf;
+      const response=await fetchOriginal(url,{...options,headers:encabezados,credentials:"same-origin"});
+      if(response.status===401)location.replace("/admin-login.html");
+      return response;
+    };
+    const escapar=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    async function revocarUltima(){
+      if(!ultimaCompraId||!confirm("¿Revocar la última invitación de compra?"))return;
+      const r=await fetch("/api/admin/revocar-compra",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({compraId:ultimaCompraId})});
+      if(r.ok){ultimaCompraId=null;document.getElementById("btnRevocar").disabled=true;}
+    }
+
     let allProductos = [];
     let categoriasAbiertas = new Set();
-    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
-      if (data.type === "qr_update") checkWAStatus();
-    };
+    // El alojamiento Free puede suspender/reiniciar la conexión: resincronizar al reconectar.
+    let ws = null;
+    let reintentoWS = null;
+    let intentosWS = 0;
+    function sincronizarCatalogo() {
+      fetch("/api/productos")
+        .then(r => { if (!r.ok) throw Error("CATALOGO_NO_DISPONIBLE"); return r.json(); })
+        .then(data => { allProductos = data; filtrarProductos(); })
+        .catch(() => { console.warn("No se pudo resincronizar HogarStock."); });
+    }
+    function programarReconexionWS() {
+      if (reintentoWS !== null) return;
+      const espera = Math.min(30000, 1000 * 2 ** Math.min(intentosWS++, 5));
+      reintentoWS = setTimeout(() => { reintentoWS = null; conectarWS(); }, espera);
+    }
+    function conectarWS() {
+      let actual;
+      try {
+        actual = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+      } catch (_) { programarReconexionWS(); return; }
+      ws = actual;
+      actual.onopen = () => { intentosWS = 0; sincronizarCatalogo(); checkWAStatus(); };
+      actual.onmessage = e => {
+        let data;
+        try { data = JSON.parse(e.data); } catch (_) { return; }
+        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
+        if (data.type === "qr_update") checkWAStatus();
+      };
+      actual.onerror = () => actual.close();
+      actual.onclose = () => programarReconexionWS();
+    }
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
       if (categoriasAbiertas.has(cat)) categoriasAbiertas.delete(cat);
@@ -117,7 +164,7 @@
       const filtrados = allProductos.filter(p => p.nombre.toLowerCase().includes(busqueda));
       render(filtrados, busqueda !== "");
     }
-    let qrGenerado = false;
+    let ultimoQR = null;
     async function checkWAStatus() {
       try {
         const res = await fetch("/api/whatsapp-status");
@@ -128,19 +175,29 @@
           el.className = "wa-status wa-on";
           el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
           modal.style.display = "none";
-          qrGenerado = false;
+          ultimoQR = null;
+          document.getElementById("qrcode").replaceChildren();
         } else {
           el.className = "wa-status wa-off";
           if (data.qr) {
             el.innerHTML = '<div class="dot"></div> WhatsApp: Esperando escaneo 📱';
             modal.style.display = "flex";
-            if (!qrGenerado) {
-              document.getElementById("qrcode").innerHTML = "";
-              new QRCode(document.getElementById("qrcode"), { text: data.qr, width: 250, height: 250 });
-              qrGenerado = true;
+            if (data.qr !== ultimoQR) {
+              const destino = document.getElementById("qrcode");
+              destino.replaceChildren();
+              if (typeof QRCode === "function") {
+                new QRCode(destino, { text: data.qr, width: 250, height: 250 });
+                ultimoQR = data.qr;
+              } else {
+                modal.style.display = "none";
+                el.textContent = "WhatsApp: no se pudo cargar el generador QR.";
+              }
             }
           } else {
-            el.innerHTML = '<div class="dot"></div> WhatsApp: Iniciando servidor... (Espera 10s)';
+            el.innerHTML = '<div class="dot"></div> WhatsApp: Conectando o reconectando...';
+            ultimoQR = null;
+            modal.style.display = "none";
+            document.getElementById("qrcode").replaceChildren();
           }
         }
       } catch (e) { console.error(e); }
@@ -159,9 +216,9 @@
       for (const cat in agrupados) {
         const tieneAgotados = agrupados[cat].some(p => p.agotado);
         const estaAbierta = isSearching || categoriasAbiertas.has(cat) || tieneAgotados;
-        html += `<div class="category-block ${estaAbierta ? 'abierta' : ''}"><div class="category-header" onclick="toggleCategoria('${cat}')"><span>${cat}</span><span class="arrow">▶</span></div><div class="category-content">`;
+        html += `<div class="category-block ${estaAbierta ? 'abierta' : ''}"><div class="category-header" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span>${escapar(cat)}</span><span class="arrow">▶</span></div><div class="category-content">`;
         agrupados[cat].forEach(p => {
-          html += `<div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${p.id})"><div class="custom-checkbox"></div><span class="product-name">${p.nombre}</span></div>`;
+          html += `<div class="product-card ${p.agotado ? 'agotado' : ''}" onclick="toggleAgotado(${Number(p.id)})"><div class="custom-checkbox"></div><span class="product-name">${escapar(p.nombre)}</span></div>`;
         });
         html += `</div></div>`;
       }
@@ -178,12 +235,13 @@
       try {
         const res = await fetch("/api/iniciar-compra", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefono }) });
         const data = await res.json();
-        if (data.ok) { est.className = "ok"; est.innerHTML = `✅ Lista enviada (${data.cantidad} productos).`; }
+        if (data.ok) { ultimaCompraId=data.compraId; document.getElementById("btnRevocar").disabled=false; est.className = "ok"; est.textContent = `Lista enviada (${data.cantidad} productos).`; }
         else { est.className = "err"; est.textContent = `❌ ${data.error}`; }
       } catch (err) { est.className = "err"; est.textContent = "❌ Error de conexión."; }
       finally { btn.disabled = false; }
     }
-    fetch("/api/productos").then(r => r.json()).then(data => { allProductos = data; render(allProductos, false); });
+    sincronizarCatalogo();
+    conectarWS();
   </script>
 </body>
 </html>

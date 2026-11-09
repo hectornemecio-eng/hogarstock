@@ -7,26 +7,36 @@ const db = createClient({
 });
 
 async function initDB() {
-  try {
-    await db.execute("SELECT categoria FROM productos LIMIT 1");
-  } catch (e) {
-    if (e.message.includes("no such column")) {
-      console.log("⚠️ Tabla antigua detectada sin categorías. Borrando para recrear...");
-      await db.execute("DROP TABLE IF EXISTS productos");
+  let tablaNueva = false;
+  // Validar el esquema sin borrar ni recrear tablas existentes.
+  const tablas = await db.execute(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'productos' LIMIT 1"
+  );
+
+  if (tablas.rows.length === 0) {
+    tablaNueva = true;
+    // Solo crear la tabla en una base de datos realmente nueva.
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        categoria TEXT NOT NULL,
+        agotado INTEGER DEFAULT 0
+      )
+    `);
+  } else {
+    // Validación SQL estándar: evita PRAGMA, rechazado por el endpoint Turso HTTP.
+    // LIMIT 0 verifica nombres y permisos sin consultar valores personales.
+    try {
+      await db.execute("SELECT id,nombre,categoria,agotado FROM productos LIMIT 0");
+    } catch (_) {
+      throw new Error("ESQUEMA_INCOMPATIBLE: productos no contiene las columnas requeridas; sin modificaciones");
     }
   }
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS productos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT NOT NULL,
-      categoria TEXT NOT NULL,
-      agotado INTEGER DEFAULT 0
-    )
-  `);
-  
   const count = await db.execute("SELECT COUNT(*) as c FROM productos");
-  if (count.rows[0].c === 0) {
+  // No repoblar una tabla ya existente, incluso si esta vacia.
+  if (tablaNueva && Number(count.rows[0].c) === 0) {
     const productos = [
       { n: "Aguacates", c: "Frutas y Verduras" }, { n: "Ajos", c: "Frutas y Verduras" }, { n: "Auyama", c: "Frutas y Verduras" }, { n: "Arandanos", c: "Frutas y Verduras" }, { n: "Cambur", c: "Frutas y Verduras" }, { n: "Canónigos", c: "Frutas y Verduras" }, { n: "Cebollas", c: "Frutas y Verduras" }, { n: "Cilantro", c: "Frutas y Verduras" }, { n: "Cebollín", c: "Frutas y Verduras" }, { n: "Champiñon", c: "Frutas y Verduras" }, { n: "Ciruelas sin hueso", c: "Frutas y Verduras" }, { n: "Guisante fino Hacendado ultracongelado", c: "Frutas y Verduras" }, { n: "Jengibre Hacendado", c: "Frutas y Verduras" }, { n: "Lechoza", c: "Frutas y Verduras" }, { n: "Limón", c: "Frutas y Verduras" }, { n: "Manzanas rojas dulces", c: "Frutas y Verduras" }, { n: "Papas", c: "Frutas y Verduras" }, { n: "Patilla", c: "Frutas y Verduras" }, { n: "Pimentón Rojo", c: "Frutas y Verduras" }, { n: "Pimentón Verde", c: "Frutas y Verduras" }, { n: "Plátanos", c: "Frutas y Verduras" }, { n: "Tomate Canario (Unidad)", c: "Frutas y Verduras" }, { n: "Uvas roja sin semillas", c: "Frutas y Verduras" }, { n: "Verduras", c: "Frutas y Verduras" }, { n: "Yuca", c: "Frutas y Verduras" }, { n: "Zanahoria", c: "Frutas y Verduras" },
       { n: "Atún claro al natural Hacendado", c: "Carnes y Pescados" }, { n: "Caldo pescado", c: "Carnes y Pescados" }, { n: "Chuleta de pavo", c: "Carnes y Pescados" }, { n: "Chuleta aguja", c: "Carnes y Pescados" }, { n: "Jamón", c: "Carnes y Pescados" }, { n: "Jamón serrano", c: "Carnes y Pescados" }, { n: "Lomo de cerdo", c: "Carnes y Pescados" }, { n: "Medallones de merluza Hacendado ultracongelados", c: "Carnes y Pescados" }, { n: "Muslos de Pollo", c: "Carnes y Pescados" }, { n: "Pechugas enteras de pollo", c: "Carnes y Pescados" }, { n: "Pechuga de pavo", c: "Carnes y Pescados" }, { n: "Preparado de carne picada vacuno", c: "Carnes y Pescados" }, { n: "Tacos de cerdo", c: "Carnes y Pescados" }, { n: "Tacos de Pavo", c: "Carnes y Pescados" },

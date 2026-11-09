@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="referrer" content="no-referrer">
+ <title>HogarStock · Acceso administrativo</title>
+ <style>
+ body{font:16px system-ui,sans-serif;background:#f5f7f7;color:#1c302a;margin:0;display:grid;place-items:center;min-height:100vh}
+ main{box-sizing:border-box;background:white;border:1px solid #d6e2db;border-radius:16px;padding:28px;max-width:440px;width:calc(100% - 40px)}
+ label{display:block;margin-bottom:8px}input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border-radius:9px}
+ input{border:1px solid #869990}button{margin-top:15px;background:#08735b;color:white;border:0;cursor:pointer}
+ #estado{min-height:28px;color:#8a2828}button:disabled{opacity:.6}
+ </style>
+</head>
+<body>
+<main><h1>HogarStock</h1><p>Acceso administrativo protegido</p>
+ <form id="login"><label for="password">Contraseña</label>
+ <input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="200">
+ <button type="submit" id="boton">Entrar</button></form><p id="estado" role="status"></p>
+</main>
+<script>
+"use strict";
+document.getElementById("login").addEventListener("submit",async(event)=>{
+ event.preventDefault();
+ const boton=document.getElementById("boton"),estado=document.getElementById("estado");
+ const campo=document.getElementById("password");
+ boton.disabled=true;estado.textContent="Verificando...";
+ try{
+  const response=await fetch("/api/admin/login",{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   credentials:"same-origin",cache:"no-store",body:JSON.stringify({password:campo.value})
+  });
+  campo.value="";
+  if(!response.ok){estado.textContent=response.status===429?"Demasiados intentos. Reintenta más tarde.":"Acceso no autorizado.";return;}
+  location.replace("/");
+ }catch(_){estado.textContent="Error de conexión o sesión.";}
+ finally{boton.disabled=false;}
+});
+</script>
+</body></html>

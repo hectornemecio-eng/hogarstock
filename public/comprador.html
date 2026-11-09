@@ -36,57 +36,75 @@
   <div class="container"><div id="lista">Cargando...</div><div id="estado"></div></div>
   <button class="btn-finalizar" id="btnFinalizar" onclick="finalizarCompra()">Terminar compra (Enviar resumen)</button>
   <script>
-    let productos = [];
-    let miTelefono = "";
-    const urlParams = new URLSearchParams(window.location.search);
-    const telUrl = urlParams.get('tel');
-    if (telUrl) { miTelefono = telUrl; localStorage.setItem("hogarstock_tel", telUrl); }
-    else {
-      miTelefono = localStorage.getItem("hogarstock_tel") || "";
-      if (!miTelefono) {
-        const tel = prompt("Introduce tu número de WhatsApp (ej: 34600123456):");
-        if (tel) { miTelefono = tel; localStorage.setItem("hogarstock_tel", tel); }
-      }
+    "use strict";
+    let productos=[];
+    const cont=document.getElementById("lista");
+    const estado=document.getElementById("estado");
+    const params=new URLSearchParams(location.hash.slice(1));
+    const grantNuevo=params.get("token");
+    if(grantNuevo) {
+      sessionStorage.setItem("hs_v2_buyer_grant",grantNuevo);
+      history.replaceState(null,"",location.pathname);
     }
-    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === "update") { productos = data.productos.filter(p => p.agotado === 1); render(); }
-    };
-    function render() {
-      const cont = document.getElementById("lista");
-      if (productos.length === 0) {
-        cont.innerHTML = `<div class="vacio"><span class="icon">🎉</span><h2>¡No falta nada!</h2><p>La compra está completada.</p></div>`;
-        document.getElementById("btnFinalizar").style.display = "none";
+    const grant=sessionStorage.getItem("hs_v2_buyer_grant");
+    function mensaje(texto){estado.style.display="block";estado.textContent=texto;}
+    async function peticion(path,options={}) {
+      if(!grant)throw Error("ENLACE_DE_COMPRA_REQUERIDO");
+      const headers={Authorization:"Bearer "+grant,...(options.headers||{})};
+      const r=await fetch(path,{...options,headers,credentials:"omit",cache:"no-store"});
+      if(!r.ok)throw Error("COMPRA_NO_DISPONIBLE");
+      return r.json();
+    }
+    function render(){
+      cont.replaceChildren();
+      const visibles=productos.filter(x=>x.agotado);
+      if(visibles.length===0){
+        const p=document.createElement("p");p.className="vacio";
+        p.textContent="No quedan artículos pendientes en esta compra.";cont.append(p);
         return;
       }
-      let html = "";
-      let currentCat = "";
-      productos.forEach(p => {
-        if (p.categoria !== currentCat) {
-          currentCat = p.categoria;
-          html += `<div class="category-title">${currentCat}</div>`;
+      let ultima="";
+      for(const p of visibles){
+        if(p.categoria!==ultima){
+          const h=document.createElement("h2");h.className="category-title";
+          h.textContent=p.categoria;cont.append(h);ultima=p.categoria;
         }
-        html += `<div class="product-item" id="item-${p.id}" onclick="marcar(${p.id})"><div class="checkbox"></div><span class="product-name">${p.nombre}</span></div>`;
-      });
-      cont.innerHTML = html;
+        const item=document.createElement("div");item.className="product-item";
+        const cuadro=document.createElement("div");cuadro.className="checkbox";
+        const nombre=document.createElement("span");nombre.className="product-name";
+        nombre.textContent=p.nombre;
+        item.append(cuadro,nombre);
+        item.addEventListener("click",async()=>{
+          if(item.dataset.ocupado)return;
+          item.dataset.ocupado="1";
+          try {
+            await peticion("/api/comprado/"+p.id,{method:"POST"});
+            item.classList.add("comprado");
+            await cargar();
+          }catch(_){mensaje("No se pudo registrar. Revisa la invitación o contacta con el administrador.");}
+          finally{delete item.dataset.ocupado;}
+        });
+        cont.append(item);
+      }
     }
-    async function marcar(id) {
-      const item = document.getElementById(`item-${id}`);
-      if (item) item.classList.add("comprado");
-      await fetch(`/api/comprado/${id}`, { method: "POST" });
+    async function cargar(){
+      try{const d=await peticion("/api/comprador/lista");productos=d.productos;render();}
+      catch(_){cont.textContent="Enlace expirado o no autorizado. Solicita una invitación nueva.";
+        document.getElementById("btnFinalizar").disabled=true;}
     }
-    async function finalizarCompra() {
-      const btn = document.getElementById("btnFinalizar");
-      btn.disabled = true; btn.textContent = "Enviando resumen...";
-      const res = await fetch(`/api/finalizar-compra`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefono: miTelefono }) });
-      const data = await res.json();
-      const est = document.getElementById("estado");
-      est.className = data.faltan === 0 ? "ok" : "warn";
-      est.textContent = data.faltan === 0 ? "✅ ¡Todo comprado! Resumen enviado." : `⚠️ Compra finalizada. Resumen enviado (faltaron ${data.faltan}).`;
-      btn.style.display = "none";
+    async function finalizarCompra(){
+      if(!confirm("¿Finalizar la compra y comunicar los faltantes?"))return;
+      const boton=document.getElementById("btnFinalizar");boton.disabled=true;
+      try{
+        const d=await peticion("/api/finalizar-compra",{method:"POST"});
+        mensaje(d.enviada
+          ? "Compra finalizada. Resumen enviado. Faltantes: "+d.faltan
+          : "Compra finalizada, pero no se pudo confirmar el envío por WhatsApp. Contacta con el administrador.");
+        boton.style.display="none";
+        sessionStorage.removeItem("hs_v2_buyer_grant");
+      }catch(_){mensaje("No se pudo finalizar. Comprueba tu acceso.");boton.disabled=false;}
     }
-    fetch("/api/productos").then(r => r.json()).then(data => { productos = data.filter(p => p.agotado === 1); render(); });
+    cargar();
   </script>
 </body>
 </html>
