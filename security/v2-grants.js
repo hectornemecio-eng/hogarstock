@@ -259,7 +259,8 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
           });
         }
       }
-      return Object.freeze({nuevoEstado:nuevo,compraActiva:abiertas.rows.length===1});
+      return Object.freeze({nuevoEstado:nuevo,compraActiva:abiertas.rows.length===1,
+        compraId:abiertas.rows.length===1?String(abiertas.rows[0].compra_id):null});
     });
   }
   async function hayCompraAbierta() {
