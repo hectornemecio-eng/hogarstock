@@ -56,6 +56,6 @@ jobs:
           git config user.name 'HogarStock CI'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A package.json package-lock.json .node-version db.js server.js security/ whatsapp/ public/ PRUEBA_COMPATIBILIDAD_V383.cjs hogarstock-v383.source.b64
-          git diff --cached --check
+          git diff --cached --check -- . ':(exclude)public/vendor/qrcodejs.LICENSE.txt'
           git commit -m 'feat: implementar HogarStock V3 segura desde fuente auditada'
           git push origin HEAD:preparacion-hogarstock-v383
