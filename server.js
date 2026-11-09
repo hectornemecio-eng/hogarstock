@@ -293,6 +293,24 @@ async function iniciarWhatsApp() {
           return;
         }
 
+        if (codigo === DisconnectReason.restartRequired) {
+          // Tras escanear el QR, WhatsApp solicita reconectar con las claves nuevas.
+          // Nunca abrir el socket siguiente antes de terminar de persistirlas en Turso.
+          console.log("WhatsApp: reinicio de sesion tras emparejamiento.");
+          void colaCredenciales.then(() => {
+            if (persistenciaFallida || waLeasePerdido) return;
+            intentosFallidos = 0;
+            if (reconexionTimer) clearTimeout(reconexionTimer);
+            reconexionTimer = setTimeout(() => {
+              reconexionTimer = null;
+              void iniciarWhatsApp();
+            }, 1000);
+          }).catch(() => {
+            console.error("WhatsApp: credenciales no confirmadas; reinicio cancelado.");
+          });
+          return;
+        }
+
         programarReconexion();
       }
     });
