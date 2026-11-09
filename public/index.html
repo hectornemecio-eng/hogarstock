@@ -250,7 +250,24 @@
       cont.innerHTML = html;
       document.getElementById("btnEnviar").disabled = !allProductos.some(p => p.agotado);
     }
-    async function toggleAgotado(id) { await fetch(`/api/agotar/${id}`, { method: "POST" }); }
+    let cambiandoProducto = false;
+    async function toggleAgotado(id) {
+      if(cambiandoProducto)return;
+      cambiandoProducto=true;
+      try {
+        const r=await fetch(`/api/agotar/${id}`,{method:"POST"});
+        const d=await r.json();
+        if(!r.ok || !d.ok)throw Error(d.error||"NO_SE_PUDO_CAMBIAR");
+        // No depender del WebSocket: reflejar el resultado aun si se reconecta.
+        sincronizarCatalogo();
+      }catch(e){
+        const est=document.getElementById("estado");
+        est.className="err";
+        est.textContent="No se pudo cambiar el producto: "+String(e.message||"ERROR");
+        est.style.display="block";
+        sincronizarCatalogo();
+      }finally{cambiandoProducto=false;}
+    }
     async function cargarContactos() {
       const cont=document.getElementById("contactosSeleccionados");
       try {
