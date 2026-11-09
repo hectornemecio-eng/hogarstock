@@ -76,6 +76,10 @@
     </main>
     <aside class="sidebar">
       <div id="waStatus" class="wa-status wa-off"><div class="dot"></div> WhatsApp: Comprobando...</div>
+      <button id="btnRevincularWA" type="button" onclick="revincularWhatsApp()"
+        style="display:none;width:100%;padding:.75rem;margin:-.7rem 0 1.1rem;background:#fef3c7;border:1px solid #d97706;border-radius:8px;color:#78350f;font-weight:700;cursor:pointer">
+        Volver a vincular WhatsApp
+      </button>
       <div class="form-group">
         <label>Contactos frecuentes</label>
         <!-- Contactos privados: escribir el número autorizado en el campo. -->
@@ -165,12 +169,31 @@
       render(filtrados, busqueda !== "");
     }
     let ultimoQR = null;
+    async function revincularWhatsApp() {
+      if(!confirm("WhatsApp ha rechazado la sesion anterior. ¿Archivar las credenciales cifradas y generar un nuevo QR? No se modificaran productos ni compras."))return;
+      const boton=document.getElementById("btnRevincularWA");
+      boton.disabled=true;
+      try {
+        const r=await fetch("/api/admin/revincular-whatsapp",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({confirmacion:"REVINCULAR_SOLO_WHATSAPP"})
+        });
+        const d=await r.json();
+        if(!r.ok || !d.ok)throw Error(d.error||"REVINCULACION_NO_INICIADA");
+        boton.style.display="none";
+        alert("Copia cifrada de las credenciales anteriores conservada. Se generara un QR nuevo en esta pantalla.");
+        checkWAStatus();
+      }catch(e){alert("No se pudo iniciar el cambio de vinculacion: "+String(e.message||"ERROR"));}
+      finally{boton.disabled=false;}
+    }
     async function checkWAStatus() {
       try {
         const res = await fetch("/api/whatsapp-status");
         const data = await res.json();
         const el = document.getElementById("waStatus");
         const modal = document.getElementById("qrModal");
+        document.getElementById("btnRevincularWA").style.display =
+          data.requiereRevinculacion ? "block" : "none";
         if (data.conectado) {
           el.className = "wa-status wa-on";
           el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
