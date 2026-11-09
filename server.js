@@ -6,6 +6,7 @@ const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
 const {crearIdentidadV2}=require("./security/v2-identity");
 const {crearHTTPV2}=require("./security/v2-http");
+const {crearCanalCompradores}=require("./security/v2-buyer-ws");
 const {crearGrantsV2}=require("./security/v2-grants");
 const {crearAuthTurso}=require("./whatsapp/wa-auth-turso");
 const {crearLeaseWa}=require("./whatsapp/wa-lease");
@@ -65,12 +66,17 @@ app.use((req,res,next)=>{
 });
 // Ausencia de configuración segura = fallo cerrado antes de servir HTTP.
 const identidad=crearIdentidadV2({entorno:process.env});
-const http=crearHTTPV2({identidad,
-  origen:(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"")});
+const origen=(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"");
+const http=crearHTTPV2({identidad,origen});
 const contactos=(process.env.WA_ALLOWED_NUMBERS||"").split(",").map(x=>x.trim()).filter(Boolean);
 const grants=crearGrantsV2({db,identidad,contactos});
+const compradoresWS=crearCanalCompradores({WebSocketServer,identidad,grants,origen});
 let envioListaEnCurso=false;
 server.on("upgrade",(req,socket,head)=>{
+  if(compradoresWS.aceptaUpgrade(req)){
+    compradoresWS.upgrade(req,socket,head);
+    return;
+  }
   if(!http.websocketAdmin(req)){
     socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     socket.destroy();
@@ -442,6 +448,7 @@ app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
     const cambio=await grants.alternarProducto({productoId:id});
     const productos=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
     broadcast({type:"update",productos:productos.rows}); // WS SOLO admin
+    if(cambio.compraId)compradoresWS.notificar({compraId:cambio.compraId});
     res.json({ok:true,nuevoEstado:cambio.nuevoEstado,compraActiva:cambio.compraActiva});
   }catch(error){resultadoPublico(res,error);}
 });
@@ -494,6 +501,7 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
 app.post("/api/admin/revocar-compra",http.adminWrite,async(req,res)=>{
   try {
     const revocada=await grants.revocar({compraId:req.body?.compraId});
+    if(revocada)compradoresWS.notificar({compraId:req.body.compraId,tipo:"cerrada"});
     res.json({ok:true,revocada});
   }catch(error){resultadoPublico(res,error);}
 });
@@ -508,16 +516,19 @@ app.post("/api/comprado/:id",http.compradorWrite,async(req,res)=>{
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID_INVALIDO"});
-    await grants.marcar({grant:req.hsCompra,productoId:id});
+    const resultado=await grants.marcar({grant:req.hsCompra,productoId:id});
     const lista=await grants.listar({grant:req.hsCompra});
     const actualizados=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
     broadcast({type:"update",productos:actualizados.rows});
-    res.json({ok:true,faltan:lista.filter(x=>x.agotado).length});
+    compradoresWS.notificar({compraId:req.hsCompra.idCompra});
+    res.json({ok:true,yaRegistrado:resultado.yaRegistrado,
+      faltan:lista.filter(x=>x.agotado).length});
   }catch(error){resultadoPublico(res,error);}
 });
 app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
   try {
     const cierre=await grants.finalizar({grant:req.hsCompra});
+    compradoresWS.notificar({compraId:req.hsCompra.idCompra,tipo:"cerrada"});
     const texto=cierre.faltan===0
       ? "✅ *Compra completada.* Todos los productos comprados."
       : "⚠️ *Compra finalizada.*\n\nPendientes:\n"+cierre.pendientes.map(x=>"- "+x).join("\n");
