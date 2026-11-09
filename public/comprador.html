@@ -32,14 +32,17 @@
   </style>
 </head>
 <body>
-  <div class="header"><h1>🛒 Lista de Compra</h1></div>
+  <div class="header"><h1>🛒 Lista de Compra</h1><p id="syncEstado" class="warn" role="status" aria-live="polite">Conectando con HogarStock...</p></div>
   <div class="container"><div id="lista">Cargando...</div><div id="estado"></div></div>
   <button class="btn-finalizar" id="btnFinalizar" onclick="finalizarCompra()">Terminar compra (Enviar resumen)</button>
   <script>
+
     "use strict";
     let productos=[];
     const cont=document.getElementById("lista");
     const estado=document.getElementById("estado");
+    const indicador=document.getElementById("syncEstado");
+    const botonFinalizar=document.getElementById("btnFinalizar");
     const params=new URLSearchParams(location.hash.slice(1));
     const grantNuevo=params.get("token");
     if(grantNuevo) {
@@ -47,20 +50,70 @@
       history.replaceState(null,"",location.pathname);
     }
     const grant=sessionStorage.getItem("hs_v2_buyer_grant");
-    function mensaje(texto){estado.style.display="block";estado.textContent=texto;}
+    let ws=null,wsAutorizado=false,reconexion=null,intentos=0;
+    let ultimoSync=0,numeroCarga=0,finalizada=false,operacionActiva=false;
+    function mensaje(texto,tipo="warn"){
+      estado.style.display="block";
+      estado.className=tipo;
+      estado.textContent=texto;
+    }
+    function estadoSync(texto,tipo="warn") {
+      indicador.textContent=texto;indicador.className=tipo;
+    }
+    function sePuedeComprar(){
+      return Boolean(grant && !finalizada && navigator.onLine && ultimoSync>0 &&
+        (wsAutorizado || Date.now()-ultimoSync<20000));
+    }
+    function refrescarBotones(){
+      botonFinalizar.disabled=!sePuedeComprar() || operacionActiva;
+    }
+    function pintarSincronizacion() {
+      if(finalizada)return;
+      if(!navigator.onLine){
+        estadoSync("Sin Internet. No compres basándote en esta lista hasta reconectar.","err");
+      }else if(wsAutorizado && ultimoSync>0){
+        estadoSync("Lista sincronizada con los demás compradores","ok");
+      }else if(ultimoSync>0 && Date.now()-ultimoSync<20000){
+        estadoSync("Lista actualizada. Recuperando conexión en directo...","warn");
+      }else{
+        estadoSync("Sincronización pendiente. Verificando cambios...","warn");
+      }
+      refrescarBotones();
+    }
     async function peticion(path,options={}) {
       if(!grant)throw Error("ENLACE_DE_COMPRA_REQUERIDO");
       const headers={Authorization:"Bearer "+grant,...(options.headers||{})};
       const r=await fetch(path,{...options,headers,credentials:"omit",cache:"no-store"});
-      if(!r.ok)throw Error("COMPRA_NO_DISPONIBLE");
+      if(!r.ok){
+        const error=new Error("COMPRA_NO_DISPONIBLE");
+        error.status=r.status;
+        throw error;
+      }
       return r.json();
+    }
+    function cerrarCompra(texto){
+      if(finalizada)return;
+      finalizada=true;
+      wsAutorizado=false;
+      if(reconexion!==null){clearTimeout(reconexion);reconexion=null;}
+      if(ws){try{ws.close(1000,"Compra cerrada");}catch(_){}ws=null;}
+      botonFinalizar.disabled=true;
+      botonFinalizar.style.display="none";
+      cont.replaceChildren();
+      const aviso=document.createElement("p");
+      aviso.className="vacio";
+      aviso.textContent=texto||"La compra ha finalizado o fue cancelada. Solicita una nueva lista.";
+      cont.append(aviso);
+      estadoSync("Compra cerrada. No se realizarán más cambios.","warn");
+      sessionStorage.removeItem("hs_v2_buyer_grant");
     }
     function render(){
       cont.replaceChildren();
       const visibles=productos.filter(x=>x.agotado);
       if(visibles.length===0){
         const p=document.createElement("p");p.className="vacio";
-        p.textContent="No quedan artículos pendientes en esta compra.";cont.append(p);
+        p.textContent="No quedan artículos pendientes en esta compra.";
+        cont.append(p);
         return;
       }
       let ultima="";
@@ -69,42 +122,153 @@
           const h=document.createElement("h2");h.className="category-title";
           h.textContent=p.categoria;cont.append(h);ultima=p.categoria;
         }
-        const item=document.createElement("div");item.className="product-item";
+        const item=document.createElement("div");
+        item.className="product-item";
         const cuadro=document.createElement("div");cuadro.className="checkbox";
         const nombre=document.createElement("span");nombre.className="product-name";
-        nombre.textContent=p.nombre;
-        item.append(cuadro,nombre);
-        item.addEventListener("click",async()=>{
-          if(item.dataset.ocupado)return;
-          item.dataset.ocupado="1";
-          try {
-            await peticion("/api/comprado/"+p.id,{method:"POST"});
-            item.classList.add("comprado");
-            await cargar();
-          }catch(_){mensaje("No se pudo registrar. Revisa la invitación o contacta con el administrador.");}
-          finally{delete item.dataset.ocupado;}
-        });
+        nombre.textContent=p.nombre;item.append(cuadro,nombre);
+        item.addEventListener("click",()=>{void marcarProducto(p.id);});
         cont.append(item);
       }
     }
-    async function cargar(){
-      try{const d=await peticion("/api/comprador/lista");productos=d.productos;render();}
-      catch(_){cont.textContent="Enlace expirado o no autorizado. Solicita una invitación nueva.";
-        document.getElementById("btnFinalizar").disabled=true;}
+    async function cargar() {
+      if(finalizada || !grant)return false;
+      const solicitud=++numeroCarga;
+      try{
+        const d=await peticion("/api/comprador/lista");
+        if(solicitud!==numeroCarga || finalizada)return false;
+        if(!Array.isArray(d.productos))throw Error("FORMATO_INVALIDO");
+        // No reconstruir la lista si nada ha cambiado: evita parpadeos.
+        if(JSON.stringify(productos)!==JSON.stringify(d.productos)){
+          productos=d.productos;
+          render();
+        }
+        ultimoSync=Date.now();
+        pintarSincronizacion();
+        return true;
+      }catch(e){
+        if(solicitud!==numeroCarga || finalizada)return false;
+        if([401,403,409].includes(e.status)){
+          cerrarCompra("Esta invitación está vencida, revocada o finalizada. Solicita una lista nueva.");
+        }else{
+          estadoSync("No se pudo comprobar la lista. Evita comprar hasta recuperar la conexión.","err");
+          refrescarBotones();
+        }
+        return false;
+      }
+    }
+    function programarReconexion() {
+      if(reconexion!==null||finalizada||!grant||!navigator.onLine)return;
+      const demora=Math.min(15000,1000*2**Math.min(intentos++,4));
+      reconexion=setTimeout(()=>{
+        reconexion=null;
+        conectarWS();
+      },demora);
+    }
+    function conectarWS(){
+      if(finalizada||!grant||!navigator.onLine)return;
+      if(ws && (ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;
+      let actual;
+      try{
+        actual=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws-comprador");
+      }catch(_){programarReconexion();return;}
+      ws=actual;wsAutorizado=false;pintarSincronizacion();
+      actual.onopen=()=>{
+        if(finalizada){actual.close();return;}
+        // El token nunca aparece en la URL del WebSocket.
+        actual.send(JSON.stringify({type:"auth",token:grant}));
+      };
+      actual.onmessage=event=>{
+        if(actual!==ws || finalizada)return;
+        let data;
+        try{data=JSON.parse(event.data);}catch(_){return;}
+        if(data.type==="sincronizar"||data.type==="actualizar"){
+          wsAutorizado=true;intentos=0;
+          void cargar();
+        }else if(data.type==="cerrada"){
+          cerrarCompra("La compra se ha cerrado desde otro dispositivo. Solicita una nueva lista.");
+        }
+      };
+      actual.onerror=()=>{try{actual.close();}catch(_){}};
+      actual.onclose=event=>{
+        if(actual!==ws)return;
+        ws=null;wsAutorizado=false;
+        if(finalizada)return;
+        if(event.code===1008){
+          cerrarCompra("Tu invitación ha caducado o ya no está autorizada.");
+          return;
+        }
+        pintarSincronizacion();
+        programarReconexion();
+      };
+    }
+    async function marcarProducto(id) {
+      if(operacionActiva||finalizada)return;
+      operacionActiva=true;refrescarBotones();
+      try{
+        // Consultar el estado autoritativo antes de registrar una compra.
+        if(!navigator.onLine || !(await cargar())){
+          mensaje("No hay conexión confirmada. No marques este producto hasta sincronizar.");
+          return;
+        }
+        if(!productos.some(p=>Number(p.id)===Number(id) && p.agotado)){
+          mensaje("Otro comprador ya retiró este producto de los pendientes.");
+          return;
+        }
+        const d=await peticion("/api/comprado/"+id,{method:"POST"});
+        if(d.yaRegistrado){
+          mensaje("Este producto ya había sido comprado desde otro teléfono.");
+        }else{
+          mensaje("Producto registrado. La lista compartida se está actualizando.","ok");
+        }
+        await cargar();
+      }catch(_){
+        mensaje("No se pudo confirmar el cambio. Comprueba si otro comprador ya lo marcó.");
+        await cargar();
+      }finally{
+        operacionActiva=false;
+        refrescarBotones();
+      }
     }
     async function finalizarCompra(){
-      if(!confirm("¿Finalizar la compra y comunicar los faltantes?"))return;
-      const boton=document.getElementById("btnFinalizar");boton.disabled=true;
+      if(finalizada||operacionActiva)return;
+      if(!confirm("¿Finalizar la compra para TODOS los participantes y comunicar los faltantes?"))return;
+      operacionActiva=true;refrescarBotones();
       try{
+        if(!navigator.onLine || !(await cargar())){
+          mensaje("No hay conexión. No se puede finalizar hasta sincronizar.");
+          return;
+        }
         const d=await peticion("/api/finalizar-compra",{method:"POST"});
-        mensaje(d.enviada
+        const texto=d.enviada
           ? "Compra finalizada. Resumen enviado. Faltantes: "+d.faltan
-          : "Compra finalizada, pero no se pudo confirmar el envío por WhatsApp. Contacta con el administrador.");
-        boton.style.display="none";
-        sessionStorage.removeItem("hs_v2_buyer_grant");
-      }catch(_){mensaje("No se pudo finalizar. Comprueba tu acceso.");boton.disabled=false;}
+          : "Compra finalizada, pero alguna notificación de WhatsApp no pudo confirmarse.";
+        cerrarCompra("Compra finalizada para todos los participantes.");
+        mensaje(texto,d.enviada?"ok":"warn");
+      }catch(_){
+        mensaje("No se pudo confirmar la finalización. Verifica el estado antes de reintentar.");
+        await cargar();
+      }finally{
+        operacionActiva=false;refrescarBotones();
+      }
     }
-    cargar();
+    // Cuando el teléfono vuelve a primer plano, siempre consultar el estado oficial.
+    document.addEventListener("visibilitychange",()=>{
+      if(!document.hidden){void cargar();conectarWS();}
+    });
+    window.addEventListener("pageshow",()=>{void cargar();conectarWS();});
+    window.addEventListener("online",()=>{void cargar();conectarWS();});
+    window.addEventListener("offline",()=>pintarSincronizacion());
+    // Respaldo eficiente cuando falla WebSocket. Con canal sano: control cada minuto.
+    setInterval(()=>{
+      if(finalizada||document.hidden||!navigator.onLine)return;
+      const intervalo=wsAutorizado?60000:12000;
+      if(Date.now()-ultimoSync>=intervalo)void cargar();
+      if(!wsAutorizado)conectarWS();
+      pintarSincronizacion();
+    },6000);
+    if(!grant)cerrarCompra("No hay enlace de compra válido. Solicita una invitación.");
+    else {void cargar();conectarWS();}
   </script>
 </body>
 </html>
