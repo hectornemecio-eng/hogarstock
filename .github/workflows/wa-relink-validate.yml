@@ -1,0 +1,75 @@
+name: HogarStock - verificar nueva vinculacion WhatsApp
+on:
+  push:
+    branches: [preparacion-revinculacion-wa-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y controles de acceso
+        run: |
+          node --check server.js
+          node --check whatsapp/wa-relink.js
+          node - <<'NODE'
+          const a=require('node:assert/strict');
+          const fs=require('node:fs');
+          const s=fs.readFileSync('server.js','utf8');
+          const h=fs.readFileSync('public/index.html','utf8');
+          a(s.includes('app.post("/api/admin/revincular-whatsapp",http.adminWrite,async(req,res)=>{'));
+          a(s.includes('req.body?.confirmacion!=="REVINCULAR_SOLO_WHATSAPP"'));
+          a(s.includes('await waCredencialesPendientes;'));
+          a(s.includes('codigo 401'));
+          a(h.includes('id="btnRevincularWA"'));
+          a(h.includes('confirm("WhatsApp ha rechazado la sesion anterior.'));
+          console.log('ACCESS_CONTROLS_OK');
+          NODE
+      - name: Transaccion atomica libSQL simulada
+        run: |
+          node - <<'NODE'
+          const a=require('node:assert/strict'),c=require('node:crypto');
+          const {createClient}=require('@libsql/client');
+          const {prepararNuevaVinculacion}=require('./whatsapp/wa-relink');
+          (async()=>{
+            const db=createClient({url:'file::memory:'});
+            try{
+              await db.execute('CREATE TABLE productos(id INTEGER PRIMARY KEY,nombre TEXT)');
+              await db.execute("INSERT INTO productos VALUES(1,'leche prueba')");
+              await db.execute('CREATE TABLE hs_v2_wa_auth_encrypted(id TEXT PRIMARY KEY,payload TEXT NOT NULL,actualizado INTEGER NOT NULL)');
+              await db.execute("INSERT INTO hs_v2_wa_auth_encrypted VALUES('creds','cifrado-viejo',1),('key:x','otra-clave',2)");
+              await db.execute('CREATE TABLE hs_v2_wa_lease(slot INTEGER PRIMARY KEY,owner TEXT,generation INTEGER,hasta INTEGER)');
+              await db.execute({sql:'INSERT INTO hs_v2_wa_lease VALUES(1,?,?,?)',args:['holder',1,Date.now()+60000]});
+              const l={verificar:async()=>{},condicion:()=>({sql:'EXISTS(SELECT 1 FROM hs_v2_wa_lease WHERE slot=1 AND owner=? AND generation=? AND hasta>?)',args:['holder',1,Date.now()]})};
+              const k=c.randomBytes(32).toString('hex'),config={db,lease:l,claveHex:k,initAuthCreds:()=>({nueva:true}),BufferJSON:{replacer:(k,v)=>v}};
+              const out=await prepararNuevaVinculacion(config);
+              a.equal(out.archivados,2);
+              const arc=await db.execute('SELECT payload FROM hs_v2_wa_auth_archive');
+              a.equal(arc.rows.length,2);
+              const now=await db.execute('SELECT id,payload FROM hs_v2_wa_auth_encrypted');
+              a.equal(now.rows.length,1);
+              a.equal(now.rows[0].id,'creds');
+              a.notEqual(now.rows[0].payload,'cifrado-viejo');
+              const prod=await db.execute('SELECT * FROM productos');
+              a.equal(prod.rows.length,1);
+              const before=now.rows[0].payload;
+              const bad={...config,lease:{verificar:async()=>{},condicion:()=>({sql:l.condicion().sql,args:['other',1,Date.now()]})}};
+              await a.rejects(()=>prepararNuevaVinculacion(bad),/HS_WA_RELINK_RESULTADO_INCONSISTENTE/);
+              const after=await db.execute('SELECT payload FROM hs_v2_wa_auth_encrypted');
+              a.equal(after.rows[0].payload,before);
+              console.log('ARCHIVE_ATOMIC_NO_PRODUCTS_MUTATED_OK');
+            }finally{db.close()}
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
+      - name: Verificar ausencia de credenciales
+        run: |
+          test ! -f .env
+          test ! -f auth.json
