@@ -1,0 +1,35 @@
+name: HogarStock - runtime Baileys autentico para test privado
+on:
+  push:
+    branches: [lab-baileys-auth-integration-2026-11-09]
+permissions:
+  contents: read
+jobs:
+  baileysoffline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7060b27ef18de9de73091be3963e3c37cc2db246
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Descargar dependencias exactas a directorio efimero
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          printf '%s\n' '{"name":"hs-baileys-offline","private":true,"version":"1.0.0","dependencies":{"@whiskeysockets/baileys":"7.0.0-rc11"}}' > qa/package.json
+          npm install --prefix qa --ignore-scripts --no-audit --no-fund --omit=dev
+          cd qa
+          node --input-type=module -e "import * as b from '@whiskeysockets/baileys';const state=b.initAuthCreds();const r=JSON.parse(JSON.stringify(state,b.BufferJSON.replacer),b.BufferJSON.reviver);if(!r.signedIdentityKey?.private||!Buffer.isBuffer(r.signedIdentityKey.private))throw Error('BUFFER_ROUNDTRIP_FAILED');console.log('REAL_BAILEYS_SERIALIZATION_OK')"
+          tar -czf ../baileys-runtime.tar.gz node_modules package.json package-lock.json
+          sha256sum ../baileys-runtime.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hs-baileys-offline-rc11-node22
+          path: baileys-runtime.tar.gz
+          retention-days: 1
+          if-no-files-found: error
