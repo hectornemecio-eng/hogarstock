@@ -439,18 +439,10 @@ app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID_INVALIDO"});
-    if(await grants.hayCompraAbierta())return res.status(409).json({error:"COMPRA_ACTIVA_IMPIDE_CAMBIO"});
-    const v=await db.execute({sql:"SELECT agotado FROM productos WHERE id=?",args:[id]});
-    if(!v.rows.length)return res.status(404).json({error:"PRODUCTO_NO_ENCONTRADO"});
-    const anterior=Number(v.rows[0].agotado),nuevo=anterior===1?0:1;
-    const cambio=await db.execute({
-      sql:"UPDATE productos SET agotado=? WHERE id=? AND agotado=?",
-      args:[nuevo,id,anterior]
-    });
-    if(Number(cambio.rowsAffected)!==1)return res.status(409).json({error:"ESTADO_CONCURRENTE"});
+    const cambio=await grants.alternarProducto({productoId:id});
     const productos=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
     broadcast({type:"update",productos:productos.rows}); // WS SOLO admin
-    res.json({ok:true,nuevoEstado:nuevo});
+    res.json({ok:true,nuevoEstado:cambio.nuevoEstado,compraActiva:cambio.compraActiva});
   }catch(error){resultadoPublico(res,error);}
 });
 app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
