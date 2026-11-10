@@ -104,10 +104,12 @@ test("Login, CSRF y sesiones: no se puede usar contraseña anterior tras el camb
     res=response();await http.login(req,res);
     assert.equal(res.code,200);
     assert(res.headers["Set-Cookie"]);
-    assert.notEqual(res.headers["Set-Cookie"].split(";")[0],cookie);
+    const cookieNueva=res.headers["Set-Cookie"].split(";")[0];
+    const csrfNuevo=res.body.csrf;
+    assert.notEqual(cookieNueva,cookie);
     res=response();await http.adminWrite({
       headers:{origin:"https://sitio-no-autorizado.invalid",
-        cookie:res.headers["Set-Cookie"].split(";")[0],"x-hs-csrf":res.body.csrf}
+        cookie:cookieNueva,"x-hs-csrf":csrfNuevo}
     },res,()=>{called=true});
     assert.equal(res.code,403);
     assert.equal(called,false);
