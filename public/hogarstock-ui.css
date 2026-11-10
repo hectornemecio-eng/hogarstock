@@ -531,3 +531,33 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 .page-admin .password-panel #estadoClave{margin:3px 0;font-weight:650}
 .page-admin .password-panel #estadoClave.err{color:var(--error)}
 .page-admin .password-panel #estadoClave.ok{color:#17613f}
+
+/* v4.03: copia de seguridad descargable, protegida y de solo lectura */
+.page-admin .backup-panel{
+  margin-top:13px;padding:13px 14px;border:1px solid var(--line);
+  border-radius:12px;background:#fafbf9
+}
+.page-admin .backup-panel summary{
+  cursor:pointer;font-size:.82rem;font-weight:750;color:var(--ink);outline-offset:5px
+}
+.page-admin .backup-panel form{display:grid;gap:8px;margin-top:13px}
+.page-admin .backup-panel form label{
+  font-size:.76rem;font-weight:700;color:var(--ink);margin-top:5px
+}
+.page-admin .backup-panel form input{
+  display:block;width:100%;min-width:0;box-sizing:border-box;
+  border:1px solid #cddad0;border-radius:9px;background:#fff;
+  font:inherit;font-size:.86rem;padding:10px 11px
+}
+.page-admin .backup-panel form>p{
+  color:var(--muted);font-size:.74rem;line-height:1.45;margin:2px 0
+}
+.page-admin .backup-panel form button{
+  appearance:none;background:var(--brand);color:#fff;border:0;
+  border-radius:9px;padding:11px 12px;font-weight:750;
+  font-size:.81rem;cursor:pointer;margin-top:7px
+}
+.page-admin .backup-panel form button:disabled{opacity:.55;cursor:wait}
+.page-admin .backup-panel #backupEstado{font-weight:650}
+.page-admin .backup-panel #backupEstado.err{color:var(--error)}
+.page-admin .backup-panel #backupEstado.ok{color:#17613f}
