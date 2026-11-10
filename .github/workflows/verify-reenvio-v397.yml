@@ -1,0 +1,27 @@
+name: HogarStock - reenvio explicito WhatsApp v3.97
+on:
+  push:
+    branches: [fix-reenvio-whatsapp-v397-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y pruebas de reenvio aisladas
+        run: |
+          node --check server.js
+          node --check tests/reenvio-whatsapp-v397.test.js
+          node --test tests/reenvio-whatsapp-v397.test.js
+      - name: No secretos de produccion
+        run: |
+          test ! -f .env
+          test ! -f auth.json
