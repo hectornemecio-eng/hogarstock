@@ -48,6 +48,7 @@
     const grant=sessionStorage.getItem("hs_v2_buyer_grant");
     let ws=null,wsAutorizado=false,reconexion=null,intentos=0;
     let ultimoSync=0,numeroCarga=0,finalizada=false,operacionActiva=false,renderizada=false;
+    let finalizacionLocalPendiente=false;
     function mensaje(texto,tipo="warn"){
       estado.style.display="block";
       estado.className=tipo;
@@ -198,7 +199,10 @@
           wsAutorizado=true;intentos=0;
           void cargar();
         }else if(data.type==="cerrada"){
-          cerrarCompra("La compra se ha cerrado desde otro dispositivo. Solicita una nueva lista.");
+          // La respuesta HTTP de este mismo cierre confirma el resultado local.
+          // El servidor emite este aviso a todos, incluido quien pulsó finalizar.
+          if(finalizacionLocalPendiente)return;
+          cerrarCompra("La compra compartida ha terminado. Solicita una nueva lista.");
         }
       };
       actual.onerror=()=>{try{actual.close();}catch(_){}};
@@ -251,6 +255,8 @@
           mensaje("No hay conexión. No se puede finalizar hasta sincronizar.");
           return;
         }
+        // El aviso WebSocket puede llegar antes que la respuesta HTTP.
+        finalizacionLocalPendiente=true;
         const d=await peticion("/api/finalizar-compra",{method:"POST"});
         const texto=d.enviada
           ? "Compra finalizada. Resumen enviado. Faltantes: "+d.faltan
@@ -261,6 +267,7 @@
         mensaje("No se pudo confirmar la finalización. Verifica el estado antes de reintentar.");
         await cargar();
       }finally{
+        finalizacionLocalPendiente=false;
         operacionActiva=false;refrescarBotones();
       }
     }
