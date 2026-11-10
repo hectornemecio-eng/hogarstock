@@ -1,0 +1,31 @@
+name: HogarStock v4.03 - respaldo cifrado y restauracion aislada
+on:
+  push:
+    branches: [backup-seguro-v403-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  respaldo-integral:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sin scripts de instalacion
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis y regresion completa
+        run: |
+          node --check server.js
+          node --check backup/backup-safe.js
+          node --check tests/backup-v403.test.js
+          node --test tests/*.test.js
+      - name: Comprobar que no se publica configuracion privada
+        run: |
+          test ! -f .env
+          test ! -f auth.json
+          test ! -f respaldo.hsbk
