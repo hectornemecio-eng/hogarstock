@@ -29,9 +29,12 @@ function encValor(v){
     return {t:"number",v};
   }
   if(typeof v==="bigint")return {t:"integer",v:v.toString()};
-  if(v instanceof Uint8Array || Buffer.isBuffer(v))
+  if(typeof v==="boolean")return {t:"number",v:v?1:0};
+  if(v instanceof ArrayBuffer)
     return {t:"blob",v:Buffer.from(v).toString("base64")};
-  throw Error("HS_BACKUP_TIPO_INVALIDO");
+  if(ArrayBuffer.isView(v) || Buffer.isBuffer(v))
+    return {t:"blob",v:Buffer.from(v.buffer||v,v.byteOffset||0,v.byteLength||v.length).toString("base64")};
+  throw Error("HS_BACKUP_TIPO_INVALIDO_"+typeof v+"_"+Object.prototype.toString.call(v));
 }
 function decValor(v){
   if(v===null)return null;
