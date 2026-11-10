@@ -3,14 +3,19 @@ const {test}=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const crypto=require("node:crypto");
+const os=require("node:os");
+const path=require("node:path");
 const vm=require("node:vm");
 const {createClient}=require("@libsql/client");
 const {crearRespaldoCifrado,abrirRespaldo,restaurarAislado,obtenerSnapshot}=
   require("../backup/backup-safe");
 const PASO="frase-de-prueba-laboratorio-2026";
 async function baseFicticia(run,{sinClave=false}={}){
-  // Solo SQLite EN MEMORIA: no abrir el Turso externo ni usar teléfonos reales.
-  const db=createClient({url:"file::memory:"});
+  // Base de origen temporal aislada, destino de restauración solo en memoria.
+  // No abrir el Turso externo ni usar teléfonos reales.
+  const nombre=path.join(os.tmpdir(),
+    "hogarstock-v403-test-"+process.pid+"-"+crypto.randomBytes(6).toString("hex")+".sqlite");
+  const db=createClient({url:"file:"+nombre});
   try{
     await db.execute("CREATE TABLE productos(id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, categoria TEXT, agotado INTEGER)");
     await db.execute("CREATE UNIQUE INDEX test_product_name ON productos(nombre)");
@@ -44,7 +49,12 @@ async function baseFicticia(run,{sinClave=false}={}){
     await db.execute({sql:"INSERT INTO baileys_auth_v2 VALUES (?,?)",
       args:["ejemplo",Buffer.from([0,1,254,255])]});
     await run(db);
-  }finally{db.close();}
+  }finally{
+    db.close();
+    for(const archivo of [nombre,nombre+"-wal",nombre+"-shm"]){
+      try{fs.unlinkSync(archivo)}catch(_){}
+    }
+  }
 }
 test("v4.03: respaldo cifrado integral con tabla administrativa, WhatsApp, grants y tablas heredadas",async()=>{
   await baseFicticia(async db=>{
