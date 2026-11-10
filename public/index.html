@@ -42,6 +42,24 @@
       <p class="inventory-help">Selecciona los productos que necesitas comprar. Puedes modificarlos durante una compra compartida.</p>
     </main>
     <aside class="sidebar" aria-label="Compartir lista de compra">
+      <section id="compraPanel" class="shared-purchase" aria-label="Compra compartida actual">
+        <div class="shared-purchase-head">
+          <span class="shared-purchase-icon" aria-hidden="true">↗</span>
+          <div><h2>Compra compartida</h2><p>Estado central de los participantes</p></div>
+        </div>
+        <div class="shared-purchase-body">
+          <div class="shared-purchase-status"><span>Estado</span><strong id="compraEstado" class="purchase-badge">Comprobando…</strong></div>
+          <dl class="purchase-summary">
+            <div><dt>Personas invitadas</dt><dd id="compraParticipantes">—</dd></div>
+            <div><dt>Productos pendientes</dt><dd id="compraPendientes">—</dd></div>
+            <div><dt>Iniciada</dt><dd id="compraInicio">—</dd></div>
+          </dl>
+          <div class="purchase-actions">
+            <button id="btnFinalizarAdmin" type="button" onclick="finalizarCompraAdmin()" disabled>Finalizar compra</button>
+            <button id="btnRevocar" type="button" onclick="revocarUltima()" disabled>Cancelar compra</button>
+          </div>
+        </div>
+      </section>
       <div class="sidebar-head">
         <span class="sidebar-icon" aria-hidden="true">↗</span>
         <span><h2>Compartir la lista</h2><p>Un inventario, varios compradores</p></span>
@@ -64,7 +82,6 @@
       </div>
       <p class="sidebar-note">Todos los contactos seleccionados recibirán acceso a la misma lista, sin crear compras duplicadas.</p>
       <button id="btnEnviar" type="button" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista compartida</button>
-      <button id="btnRevocar" type="button" onclick="revocarUltima()" disabled>Cancelar compra compartida</button>
       <div id="estado" role="status" aria-live="polite"></div>
     </aside>
   </div>
@@ -77,6 +94,7 @@
   </div>
   <script>
     let ultimaCompraId=null;
+    let estadoCompraSolicitado=0;
     let adminCsrf="";
     const fetchOriginal=window.fetch.bind(window);
     const accesoAdmin=fetchOriginal("/api/admin/session",{cache:"no-store"}).then(async r=>{
@@ -95,10 +113,61 @@
       return response;
     };
     const escapar=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    async function cargarEstadoCompra(){
+      const revision=++estadoCompraSolicitado;
+      try{
+        const r=await fetch("/api/admin/compra-activa",{cache:"no-store"});
+        if(!r.ok)throw Error("CONSULTA_COMPRA_FALLIDA");
+        const d=await r.json();
+        if(revision!==estadoCompraSolicitado)return;
+        const activa=d.activa===true;
+        ultimaCompraId=activa?d.compraId:null;
+        document.getElementById("compraEstado").textContent=activa?"En curso":"Sin compra activa";
+        document.getElementById("compraEstado").className="purchase-badge"+(activa?" active":"");
+        document.getElementById("compraParticipantes").textContent=activa?String(d.telefonos?.length||0):"0";
+        document.getElementById("compraPendientes").textContent=activa?String(d.pendientes||0):"—";
+        const ts=activa?Number(d.creada):NaN;
+        document.getElementById("compraInicio").textContent=
+          Number.isFinite(ts)&&ts>0?new Date(ts).toLocaleString("es-ES",{dateStyle:"short",timeStyle:"short"}):"—";
+        document.getElementById("btnRevocar").disabled=!activa;
+        document.getElementById("btnFinalizarAdmin").disabled=!activa;
+      }catch(_){
+        document.getElementById("compraEstado").textContent="No disponible";
+        document.getElementById("compraEstado").className="purchase-badge";
+        document.getElementById("btnRevocar").disabled=true;
+        document.getElementById("btnFinalizarAdmin").disabled=true;
+      }
+    }
     async function revocarUltima(){
-      if(!ultimaCompraId||!confirm("¿Cancelar la compra? Se invalidara el enlace para TODOS los contactos."))return;
-      const r=await fetch("/api/admin/revocar-compra",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({compraId:ultimaCompraId})});
-      if(r.ok){ultimaCompraId=null;document.getElementById("btnRevocar").disabled=true;}
+      if(!ultimaCompraId||!confirm("¿Cancelar la compra compartida? Todos los enlaces quedarán invalidados."))return;
+      const btn=document.getElementById("btnRevocar");btn.disabled=true;
+      try{
+        const r=await fetch("/api/admin/revocar-compra",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({compraId:ultimaCompraId})
+        });
+        const d=await r.json();
+        if(!r.ok||!d.revocada)throw Error(d.error||"NO_SE_PUDO_CANCELAR");
+        mostrarMensaje("Compra cancelada para todos los participantes.","ok");
+      }catch(_){mostrarMensaje("No se pudo confirmar la cancelación.","err");}
+      finally{await cargarEstadoCompra();}
+    }
+    async function finalizarCompraAdmin(){
+      if(!ultimaCompraId||!confirm("¿Finalizar la compra para TODOS y enviar el resumen por WhatsApp?"))return;
+      const btn=document.getElementById("btnFinalizarAdmin");btn.disabled=true;
+      try{
+        const r=await fetch("/api/admin/finalizar-compra",{method:"POST"});
+        const d=await r.json();
+        if(!r.ok||!d.ok)throw Error(d.error||"NO_SE_PUDO_FINALIZAR");
+        mostrarMensaje("Compra finalizada. Faltantes: "+d.faltan+
+          ". Resúmenes confirmados: "+d.notificados+" de "+d.destinatarios+".",
+          d.notificados===d.destinatarios?"ok":"err");
+      }catch(_){mostrarMensaje("No se pudo confirmar la finalización. Comprueba el estado.","err");}
+      finally{await cargarEstadoCompra();}
+    }
+    function mostrarMensaje(mensaje,tipo="ok"){
+      const est=document.getElementById("estado");
+      est.className=tipo;est.textContent=mensaje;est.style.display="block";
     }
 
     let allProductos = [];
@@ -135,11 +204,21 @@
       actual.onmessage = e => {
         let data;
         try { data = JSON.parse(e.data); } catch (_) { return; }
-        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
+        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); void cargarEstadoCompra(); }
         if (data.type === "qr_update") checkWAStatus();
+        if (data.type === "compra_update") void cargarEstadoCompra();
       };
       actual.onerror = () => actual.close();
       actual.onclose = () => programarReconexionWS();
+    }
+    function iconoCategoria(nombre){
+      const c=String(nombre).toLocaleLowerCase("es");
+      if(/carne|pescad/.test(c))return "🐟";
+      if(/fruta|verdura/.test(c))return "🥬";
+      if(/lácteo|lacteo|huevo/.test(c))return "🥛";
+      if(/despensa|aliment/.test(c))return "◈";
+      if(/limpieza|higiene/.test(c))return "✧";
+      return "▦";
     }
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
@@ -229,9 +308,9 @@
         const tieneAgotados = agrupados[cat].some(p => p.agotado);
         const estaAbierta = isSearching || categoriasAbiertas.has(cat) || tieneAgotados;
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
-        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">#</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
+        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
-          html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : 'Disponible'}</span></button>`;
+          html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button>`;
         });
         html += `</div></section>`;
       }
@@ -256,8 +335,24 @@
         sincronizarCatalogo();
       }finally{cambiandoProducto=false;}
     }
+    // Alias opcionales: solo en este navegador, sin escrituras en Turso.
+    const ALIAS_KEY="hs_contact_alias_v1";
+    function aliasContactos(){
+      try{
+        const v=JSON.parse(localStorage.getItem(ALIAS_KEY)||"{}");
+        return v&&typeof v==="object"&&!Array.isArray(v)?v:{};
+      }catch(_){return {};}
+    }
+    function guardarAlias(numero,nombre){
+      const data=aliasContactos();
+      if(nombre)data[numero]=nombre;
+      else delete data[numero];
+      try{localStorage.setItem(ALIAS_KEY,JSON.stringify(data));return true;}
+      catch(_){return false;}
+    }
     async function cargarContactos() {
       const cont=document.getElementById("contactosSeleccionados");
+      const marcados=new Set([...cont.querySelectorAll("input:checked")].map(x=>x.value));
       try {
         const r=await fetch("/api/admin/contactos");
         if(!r.ok)throw Error("CONTACTOS_NO_DISPONIBLES");
@@ -267,13 +362,33 @@
           cont.textContent="No hay contactos autorizados.";
           return;
         }
-        for(const numero of d.telefonos){
-          const label=document.createElement("label");
-          label.className="contact-option";
-          const cb=document.createElement("input");
-          cb.type="checkbox";cb.value=numero;
-          const span=document.createElement("span");
-          span.textContent=numero;label.append(cb,span);cont.append(label);
+        const alias=aliasContactos();
+        for(const [i,numero] of d.telefonos.entries()){
+          const row=document.createElement("div");row.className="contact-option";
+          const label=document.createElement("label");label.className="contact-identity";
+          const cb=document.createElement("input");cb.type="checkbox";cb.value=numero;
+          cb.checked=marcados.has(numero);
+          const info=document.createElement("span");info.className="contact-info";
+          const nombre=document.createElement("strong");
+          nombre.textContent=alias[numero]||("Contacto "+(i+1));
+          const subtitulo=document.createElement("small");
+          subtitulo.textContent=numero;
+          info.append(nombre,subtitulo);label.append(cb,info);
+          const editar=document.createElement("button");
+          editar.type="button";editar.className="contact-edit";editar.textContent="Editar";
+          editar.setAttribute("aria-label","Cambiar nombre de "+numero);
+          editar.addEventListener("click",()=>{
+            const respuesta=prompt("Nombre para este contacto (solo en este navegador):",
+              aliasContactos()[numero]||"");
+            if(respuesta===null)return;
+            const limpio=respuesta.trim();
+            if(limpio.length>40){mostrarMensaje("El nombre no puede superar 40 caracteres.","err");return;}
+            if(!guardarAlias(numero,limpio)){
+              mostrarMensaje("No se pudo guardar el nombre en este navegador.","err");return;
+            }
+            nombre.textContent=limpio||("Contacto "+(i+1));
+          });
+          row.append(label,editar);cont.append(row);
         }
       }catch(_){cont.textContent="Introduce manualmente un número autorizado.";}
     }
@@ -294,7 +409,7 @@
         const d=await res.json();
         if(d.ok){
           ultimaCompraId=d.compraId;
-          document.getElementById("btnRevocar").disabled=false;
+          await cargarEstadoCompra();
           const n=d.enviados?.length||0,anteriores=d.yaEnviados?.length||0;
           const fallos=d.fallidos?.length||0,inciertos=d.inciertos?.length||0;
           est.className=(fallos||inciertos)?"err":"ok";
@@ -312,7 +427,10 @@
     }
     sincronizarCatalogo();
     cargarContactos();
+    cargarEstadoCompra();
     conectarWS();
+    document.addEventListener("visibilitychange",()=>{if(!document.hidden)void cargarEstadoCompra();});
+    setInterval(()=>{if(!document.hidden)void cargarEstadoCompra();},30000);
   </script>
 </body>
 </html>

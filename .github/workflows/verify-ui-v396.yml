@@ -1,0 +1,29 @@
+name: HogarStock - UI y compra activa v3.96
+on:
+  push:
+    branches: [mejoras-ui-compra-v396-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxis
+        run: |
+          node --check server.js
+          node --check security/v2-grants.js
+          node --check tests/ui-v396.test.js
+      - name: Pruebas funcionales y visuales sin Turso ni WhatsApp reales
+        run: node --test tests/ui-v396.test.js
+      - name: Comprobar ausencia de secretos
+        run: |
+          test ! -f .env
+          test ! -f auth.json

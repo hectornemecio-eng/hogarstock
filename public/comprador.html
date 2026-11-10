@@ -117,7 +117,20 @@
       for(const p of visibles){
         if(p.categoria!==ultima){
           const h=document.createElement("h2");h.className="category-title";
-          h.textContent=p.categoria;cont.append(h);ultima=p.categoria;
+          const icon=document.createElement("span");icon.className="buyer-category-icon";
+          const nombre=document.createElement("span");nombre.className="buyer-category-name";
+          const linea=document.createElement("span");linea.className="buyer-category-rule";
+          const total=document.createElement("span");total.className="buyer-category-total";
+          const c=String(p.categoria).toLocaleLowerCase("es");
+          icon.textContent=/carne|pescad/.test(c)?"🐟":
+            /fruta|verdura/.test(c)?"🥬":/lácteo|lacteo|huevo/.test(c)?"🥛":
+            /despensa/.test(c)?"◈":"▦";
+          icon.setAttribute("aria-hidden","true");
+          nombre.textContent=p.categoria;
+          total.textContent=String(visibles.filter(x=>x.categoria===p.categoria).length)+" productos";
+          linea.setAttribute("aria-hidden","true");
+          h.append(icon,nombre,linea,total);
+          cont.append(h);ultima=p.categoria;
         }
         const item=document.createElement("button");
         item.type="button";
