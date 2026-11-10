@@ -99,6 +99,9 @@
   <script>
     let ultimaCompraId=null;
     let estadoCompraSolicitado=0;
+    let compraObservada=null;
+    let revisionCatalogo=0;
+    let envioActivo=false;
     let adminCsrf="";
     const fetchOriginal=window.fetch.bind(window);
     const accesoAdmin=fetchOriginal("/api/admin/session",{cache:"no-store"}).then(async r=>{
@@ -125,6 +128,17 @@
         const d=await r.json();
         if(revision!==estadoCompraSolicitado)return;
         const activa=d.activa===true;
+        // Si la compra termina desde otro dispositivo, no dejar un aviso viejo
+        // de reenvío como si todavía fuese la situación actual.
+        if(compraObservada===true && !activa){
+          const est=document.getElementById("estado");
+          if(/^(Solicitudes de envío aceptadas:|No se envió un mensaje nuevo\.|Enviando o compartiendo\.\.\.)/.test(est.textContent)){
+            est.className="";
+            est.textContent="La compra anterior ha terminado. Puedes preparar una nueva lista.";
+            est.style.display="block";
+          }
+        }
+        compraObservada=activa;
         ultimaCompraId=activa?d.compraId:null;
         document.getElementById("compraEstado").textContent=activa?"En curso":"Sin compra activa";
         document.getElementById("compraEstado").className="purchase-badge"+(activa?" active":"");
@@ -136,6 +150,7 @@
         document.getElementById("btnRevocar").disabled=!activa;
         document.getElementById("btnFinalizarAdmin").disabled=!activa;
       }catch(_){
+        if(revision!==estadoCompraSolicitado)return;
         document.getElementById("compraEstado").textContent="No disponible";
         document.getElementById("compraEstado").className="purchase-badge";
         document.getElementById("btnRevocar").disabled=true;
@@ -189,9 +204,14 @@
     let reintentoWS = null;
     let intentosWS = 0;
     function sincronizarCatalogo() {
+      const revision=++revisionCatalogo;
       fetch("/api/productos")
         .then(r => { if (!r.ok) throw Error("CATALOGO_NO_DISPONIBLE"); return r.json(); })
-        .then(data => { allProductos = data; filtrarProductos(); })
+        .then(data => {
+          // No sobrescribir con un GET antiguo lo que ya notificó WebSocket.
+          if(revision!==revisionCatalogo || !Array.isArray(data))return;
+          allProductos=data;filtrarProductos();
+        })
         .catch(() => { console.warn("No se pudo resincronizar HogarStock."); });
     }
     function programarReconexionWS() {
@@ -209,7 +229,16 @@
       actual.onmessage = e => {
         let data;
         try { data = JSON.parse(e.data); } catch (_) { return; }
-        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); void cargarEstadoCompra(); }
+        if (data.type === "update") {
+          if(Array.isArray(data.productos)){
+            ++revisionCatalogo;
+            allProductos=data.productos;
+            filtrarProductos();
+          }else{
+            sincronizarCatalogo();
+          }
+          void cargarEstadoCompra();
+        }
         if (data.type === "qr_update") checkWAStatus();
         if (data.type === "compra_update") void cargarEstadoCompra();
       };
@@ -312,12 +341,16 @@
     }
     setInterval(checkWAStatus, 3000);
     checkWAStatus();
+    function actualizarBotonEnviar(){
+      document.getElementById("btnEnviar").disabled =
+        envioActivo || !allProductos.some(p=>Boolean(p.agotado));
+    }
     function render(productos, isSearching) {
       const cont = document.getElementById("lista");
       actualizarIndicadores();
       if (productos.length === 0) {
         cont.innerHTML = '<p class="empty-result">No encontramos productos con esa búsqueda.</p>';
-        document.getElementById("btnEnviar").disabled = !allProductos.some(p=>p.agotado);
+        actualizarBotonEnviar();
         return;
       }
       let agrupados = {};
@@ -338,7 +371,7 @@
         html += `</div></section>`;
       }
       cont.innerHTML = html;
-      document.getElementById("btnEnviar").disabled = !allProductos.some(p => p.agotado);
+      actualizarBotonEnviar();
     }
     let cambiandoProducto = false;
     async function toggleAgotado(id) {
@@ -416,6 +449,11 @@
       }catch(_){cont.textContent="Introduce manualmente un número autorizado.";}
     }
     async function enviarLista() {
+      if(envioActivo)return;
+      if(!allProductos.some(p=>Boolean(p.agotado))){
+        mostrarMensaje("Marca al menos un producto para preparar la lista.","err");
+        return;
+      }
       const seleccionados=[...document.querySelectorAll("#contactosSeleccionados input:checked")].map(x=>x.value);
       const manual=document.getElementById("telefono").value.trim();
       if(manual)seleccionados.push(manual);
@@ -425,6 +463,7 @@
       if(reenviar && !confirm("¿Reenviar la invitación a los contactos seleccionados aunque ya figure como enviada? Esto podría producir mensajes repetidos, pero mantendrá la misma compra."))return;
       const est=document.getElementById("estado");
       const btn=document.getElementById("btnEnviar");
+      envioActivo=true;
       est.className="";est.style.display="block";est.textContent="Enviando o compartiendo...";btn.disabled=true;
       try {
         const res=await fetch("/api/iniciar-compra",{
@@ -457,7 +496,7 @@
             ". Comprueba el telefono antes de reintentar.";
         }
       }catch(_){est.className="err";est.textContent="Error de conexión. Comprueba si llegó antes de reintentar.";}
-      finally{btn.disabled=false;}
+      finally{envioActivo=false;actualizarBotonEnviar();}
     }
     sincronizarCatalogo();
     cargarContactos();
