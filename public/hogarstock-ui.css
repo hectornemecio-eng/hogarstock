@@ -497,3 +497,37 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 
 /* v4.00: mantener el encabezado de la categoría visible al abrirla */
 .page-admin .category-header{scroll-margin-top:20px}
+
+/* v4.02: cambio privado de contraseña desde el panel administrativo */
+.page-admin .password-panel{
+  margin-top:22px;padding:13px 14px;border:1px solid var(--line);
+  border-radius:12px;background:#fafbf9
+}
+.page-admin .password-panel summary{
+  cursor:pointer;font-size:.82rem;font-weight:750;color:var(--ink);
+  outline-offset:5px
+}
+.page-admin .password-panel form{display:grid;gap:8px;margin-top:13px}
+.page-admin .password-panel form label{
+  font-size:.76rem;font-weight:700;color:var(--ink);margin-top:5px
+}
+.page-admin .password-panel form input{
+  display:block;width:100%;min-width:0;box-sizing:border-box;
+  border:1px solid #cddad0;border-radius:9px;background:#fff;
+  font:inherit;font-size:.86rem;padding:10px 11px
+}
+.page-admin .password-panel form input:focus-visible{
+  outline:2px solid var(--brand);outline-offset:1px
+}
+.page-admin .password-panel form>p{
+  color:var(--muted);font-size:.74rem;line-height:1.45;margin:2px 0
+}
+.page-admin .password-panel form button{
+  appearance:none;background:var(--brand);color:white;border:0;
+  border-radius:9px;padding:11px 12px;font-weight:750;
+  font-size:.81rem;cursor:pointer;margin-top:7px
+}
+.page-admin .password-panel form button:disabled{opacity:.55;cursor:wait}
+.page-admin .password-panel #estadoClave{margin:3px 0;font-weight:650}
+.page-admin .password-panel #estadoClave.err{color:var(--error)}
+.page-admin .password-panel #estadoClave.ok{color:#17613f}
