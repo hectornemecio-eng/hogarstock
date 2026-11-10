@@ -516,7 +516,7 @@ app.post("/api/admin/finalizar-compra",http.adminWrite,async(req,res)=>{
     broadcast({type:"compra_update"});
     const texto=cierre.faltan===0
       ? "✅ *Compra completada.* Todos los productos comprados."
-      : "⚠️ *Compra finalizada.*\\n\\nPendientes:\\n"+cierre.pendientes.map(x=>"- "+x).join("\\n");
+      : "⚠️ *Compra finalizada.*\n\nPendientes:\n"+cierre.pendientes.map(x=>"- "+x).join("\n");
     let notificados=0;
     for(const telefono of cierre.telefonos) {
       try{await enviarWhatsApp(telefono,texto);notificados++;}
