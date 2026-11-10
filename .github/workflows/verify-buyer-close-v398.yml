@@ -1,0 +1,26 @@
+name: HogarStock - cierre comprador sin mensajes contradictorios
+on:
+  push:
+    branches: [fix-buyer-close-message-v398-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validación de sintaxis y carreras HTTP/WS
+        run: |
+          node --check server.js
+          node --check tests/buyer-close-message-v398.test.js
+          node --test tests/buyer-close-message-v398.test.js
+      - name: Sin cambios de credenciales
+        run: |
+          test ! -f .env
+          test ! -f auth.json
