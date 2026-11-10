@@ -1,9 +1,10 @@
 "use strict";
 const {safeMacEqual}=require("./v2-identity");
-function crearHTTPV2({identidad, origen, reloj=Date.now}={}) {
+function crearHTTPV2({identidad, almacenAdmin, origen, reloj=Date.now}={}) {
   if (!identidad || typeof identidad.leerAdmin!=="function" ||
       typeof identidad.leerComprador!=="function" ||
-      typeof identidad.validarPassword!=="function") {
+      typeof identidad.validarPassword!=="function" ||
+      typeof almacenAdmin?.sincronizar!=="function") {
     throw Error("HS_V2_HTTP_IDENTIDAD_INVALIDA");
   }
   let url;
@@ -22,19 +23,22 @@ function crearHTTPV2({identidad, origen, reloj=Date.now}={}) {
   function sameOrigin(req) {
     return req.headers?.origin===origen;
   }
-  function admin(req,res,next) {
-    const s=identidad.leerAdmin(req.headers?.cookie);
-    if(!s) return json(res,401,{error:"ADMIN_NO_AUTORIZADO"});
-    req.hsAdmin=s;
+  async function admin(req,res,next) {
+    try{await almacenAdmin.sincronizar();}
+    catch(_){return json(res,503,{error:"ADMIN_ALMACEN_NO_DISPONIBLE"});}
+    const sesion=identidad.leerAdmin(req.headers?.cookie);
+    if(!sesion)return json(res,401,{error:"ADMIN_NO_AUTORIZADO"});
+    req.hsAdmin=sesion;
     return next();
   }
-  function adminWrite(req,res,next) {
-    const s=identidad.leerAdmin(req.headers?.cookie);
-    if(!s)return json(res,401,{error:"ADMIN_NO_AUTORIZADO"});
-    if(!sameOrigin(req) || !safeMacEqual(String(req.headers?.["x-hs-csrf"]||""),s.csrf)) {
+  async function adminWrite(req,res,next) {
+    try{await almacenAdmin.sincronizar();}
+    catch(_){return json(res,503,{error:"ADMIN_ALMACEN_NO_DISPONIBLE"});}
+    const sesion=identidad.leerAdmin(req.headers?.cookie);
+    if(!sesion)return json(res,401,{error:"ADMIN_NO_AUTORIZADO"});
+    if(!sameOrigin(req) || !safeMacEqual(String(req.headers?.["x-hs-csrf"]||""),sesion.csrf))
       return json(res,403,{error:"ADMIN_CSRF_BLOQUEADO"});
-    }
-    req.hsAdmin=s;
+    req.hsAdmin=sesion;
     return next();
   }
   function comprador(req,res,next) {
@@ -47,21 +51,27 @@ function crearHTTPV2({identidad, origen, reloj=Date.now}={}) {
     if (!sameOrigin(req))return json(res,403,{error:"COMPRADOR_ORIGEN_BLOQUEADO"});
     return comprador(req,res,next);
   }
-  function estadoAdmin(req,res) {
-    const s=identidad.leerAdmin(req.headers?.cookie);
-    if(!s)return json(res,401,{autenticado:false});
-    return json(res,200,{autenticado:true,csrf:s.csrf,exp:s.exp});
+  async function estadoAdmin(req,res) {
+    try{await almacenAdmin.sincronizar();}
+    catch(_){return json(res,503,{error:"ADMIN_ALMACEN_NO_DISPONIBLE"});}
+    const sesion=identidad.leerAdmin(req.headers?.cookie);
+    if(!sesion)return json(res,401,{autenticado:false});
+    return json(res,200,{autenticado:true,csrf:sesion.csrf,exp:sesion.exp});
   }
-  function login(req,res) {
+  async function login(req,res) {
     if(!sameOrigin(req))return json(res,403,{error:"ADMIN_ORIGEN_BLOQUEADO"});
     const ip=String(req.socket?.remoteAddress||"desconocido").slice(0,120);
-    const now=reloj();
-    let b=fallos.get(ip)||{first:now,n:0};
-    if(now-b.first>15*60*1000){b={first:now,n:0};fallos.delete(ip);}
-    if(b.n>=5)return json(res,429,{error:"ADMIN_ACCESO_TEMPORALMENTE_LIMITADO"});
-    const pw=req.body?.password;
-    if(typeof pw!=="string" || !identidad.validarPassword(pw)){
-      b.n++;fallos.set(ip,b);
+    const ahora=reloj();
+    let fallosIp=fallos.get(ip)||{first:ahora,n:0};
+    if(ahora-fallosIp.first>15*60*1000){
+      fallosIp={first:ahora,n:0};fallos.delete(ip);
+    }
+    if(fallosIp.n>=5)return json(res,429,{error:"ADMIN_ACCESO_TEMPORALMENTE_LIMITADO"});
+    try{await almacenAdmin.sincronizar();}
+    catch(_){return json(res,503,{error:"ADMIN_ALMACEN_NO_DISPONIBLE"});}
+    const clave=req.body?.password;
+    if(typeof clave!=="string" || !identidad.validarPassword(clave)){
+      fallosIp.n++;fallos.set(ip,fallosIp);
       return json(res,401,{error:"ADMIN_CREDENCIALES_INVALIDAS"});
     }
     fallos.delete(ip);
