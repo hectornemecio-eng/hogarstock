@@ -469,16 +469,19 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
     // Compatibilidad: numero unico o grupo de 1 a 10 contactos autorizados.
     const input=Array.isArray(req.body?.telefonos)?req.body.telefonos:[req.body?.telefono];
     const destinos=grants.validarDestinatarios(input);
+    const reenviar=req.body?.reenviar===true; // Solo por orden explícita desde el panel admin.
     const compra=await grants.prepararEnvio({telefono:destinos[0]});
     const base=(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"");
     const enlace=base+"/comprador.html#token="+encodeURIComponent(compra.token);
     const mensaje="🛒 *Lista de compra*\n\n"+compra.nombres.map(x=>"- "+x).join("\n")+
       "\n\nAbre este enlace:\n"+enlace;
-    const enviados=[],yaEnviados=[],fallidos=[],inciertos=[];
+    const enviados=[],reenviados=[],yaEnviados=[],fallidos=[],inciertos=[];
     for(let i=0;i<destinos.length;i++){
       const numero=destinos[i],esOriginalNueva=compra.nueva && i===0;
-      // Los envios confirmados no se repiten: evitan mensajes duplicados.
-      if(!esOriginalNueva && await grants.yaEnviado({compraId:compra.compraId,telefono:numero})){
+      // Por defecto, no duplicar. Reenvío solo cuando lo pide expresamente admin.
+      const registrado=!esOriginalNueva &&
+        await grants.yaEnviado({compraId:compra.compraId,telefono:numero});
+      if(registrado && !reenviar){
         yaEnviados.push(numero);
         continue;
       }
@@ -492,17 +495,18 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
         }
         continue; // nunca reintentos automaticos de WhatsApp
       }
-      if(!esOriginalNueva){
+      if(!esOriginalNueva && !registrado){
         try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
         catch(_){inciertos.push(numero);continue;}
       }
-      enviados.push(numero);
+      if(registrado)reenviados.push(numero);
+      else enviados.push(numero);
     }
-    const ok=enviados.length>0||yaEnviados.length>0;
+    const ok=enviados.length>0||reenviados.length>0||yaEnviados.length>0;
     broadcast({type:"compra_update"});
     return res.status(ok?200:503).json({
       ok,compraId:compra.compraId,cantidad:compra.cantidad,compartida:!compra.nueva,
-      enviados,yaEnviados,fallidos,inciertos,
+      enviados,reenviados,yaEnviados,fallidos,inciertos,
       error:ok?null:"ENVIO_NO_CONFIRMADO"
     });
   }catch(error){return resultadoPublico(res,error);}

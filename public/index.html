@@ -81,6 +81,10 @@
                autocomplete="tel">
       </div>
       <p class="sidebar-note">Todos los contactos seleccionados recibirán acceso a la misma lista, sin crear compras duplicadas.</p>
+      <label class="reenvio-option" for="permitirReenvio">
+        <input type="checkbox" id="permitirReenvio">
+        <span>Reenviar la invitación a contactos que ya la recibieron</span>
+      </label>
       <button id="btnEnviar" type="button" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista compartida</button>
       <div id="estado" role="status" aria-live="polite"></div>
     </aside>
@@ -398,25 +402,36 @@
       if(manual)seleccionados.push(manual);
       const telefonos=[...new Set(seleccionados)];
       if(!telefonos.length)return alert("Selecciona al menos un contacto autorizado.");
+      const reenviar=document.getElementById("permitirReenvio").checked;
+      if(reenviar && !confirm("¿Reenviar la invitación a los contactos seleccionados aunque ya figure como enviada? Esto podría producir mensajes repetidos, pero mantendrá la misma compra."))return;
       const est=document.getElementById("estado");
       const btn=document.getElementById("btnEnviar");
       est.className="";est.style.display="block";est.textContent="Enviando o compartiendo...";btn.disabled=true;
       try {
         const res=await fetch("/api/iniciar-compra",{
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({telefonos})
+          body:JSON.stringify({telefonos,reenviar})
         });
         const d=await res.json();
         if(d.ok){
           ultimaCompraId=d.compraId;
           await cargarEstadoCompra();
-          const n=d.enviados?.length||0,anteriores=d.yaEnviados?.length||0;
+          const n=d.enviados?.length||0,re=d.reenviados?.length||0;
+          const anteriores=d.yaEnviados?.length||0;
           const fallos=d.fallidos?.length||0,inciertos=d.inciertos?.length||0;
           est.className=(fallos||inciertos)?"err":"ok";
-          est.textContent="Lista compartida. Envios confirmados: "+n+
-            ". Ya enviados previamente: "+anteriores+
-            (fallos?". Envios fallidos: "+fallos+".":"")+
-            (inciertos?". Envios de estado incierto: "+inciertos+" (comprueba el telefono antes de reintentar).":"");
+          if(!n&&!re&&anteriores&&!fallos&&!inciertos){
+            est.textContent="No se envió un mensaje nuevo. Los "+anteriores+
+              " contactos ya figuraban como invitados. Si no recibieron el enlace, marca «Reenviar la invitación» y pulsa el botón otra vez.";
+          }else{
+            est.textContent="Solicitudes de envío aceptadas: "+n+
+              ". Reenvíos solicitados: "+re+
+              ". Sin enviar por estar invitados: "+anteriores+
+              (fallos?". Envíos fallidos: "+fallos+".":"")+
+              (inciertos?". Envíos de estado incierto: "+inciertos+"; comprueba WhatsApp antes de repetir.":"")+
+              ". La entrega en el teléfono no se puede garantizar desde esta pantalla.";
+          }
+          document.getElementById("permitirReenvio").checked=false;
         }else{
           est.className="err";
           est.textContent="No se pudo confirmar el envio: "+(d.error||"ERROR")+
