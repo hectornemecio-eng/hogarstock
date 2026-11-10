@@ -1,0 +1,27 @@
+name: HogarStock - posicion del acordeon v4.00
+on:
+  push:
+    branches: [fix-acordeon-scroll-v400-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxis y pruebas de posicionamiento/foco
+        run: |
+          node --check server.js
+          node --check tests/acordeon-scroll-v400.test.js
+          node --test tests/acordeon-scroll-v400.test.js
+          node --test tests/acordeon-contactos.test.js
+      - name: Verificacion sin secretos
+        run: |
+          test ! -f .env
+          test ! -f auth.json

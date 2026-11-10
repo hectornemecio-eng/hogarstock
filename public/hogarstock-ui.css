@@ -494,3 +494,6 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 .page-admin .reenvio-option:has(input:checked){
   border-color:#d9bd94;background:#fff8eb;color:#7c5319
 }
+
+/* v4.00: mantener el encabezado de la categoría visible al abrirla */
+.page-admin .category-header{scroll-margin-top:20px}
