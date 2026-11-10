@@ -5,6 +5,7 @@ const { createServer } = require("http");
 const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
 const {crearIdentidadV2}=require("./security/v2-identity");
+const {crearAlmacenClaveAdmin}=require("./security/v2-password-store");
 const {crearHTTPV2}=require("./security/v2-http");
 const {crearCanalCompradores}=require("./security/v2-buyer-ws");
 const {crearGrantsV2}=require("./security/v2-grants");
@@ -66,8 +67,9 @@ app.use((req,res,next)=>{
 });
 // Ausencia de configuración segura = fallo cerrado antes de servir HTTP.
 const identidad=crearIdentidadV2({entorno:process.env});
+const almacenAdmin=crearAlmacenClaveAdmin({db,identidad,entorno:process.env});
 const origen=(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").replace(/\/+$/g,"");
-const http=crearHTTPV2({identidad,origen});
+const http=crearHTTPV2({identidad,almacenAdmin,origen});
 const contactos=(process.env.WA_ALLOWED_NUMBERS||"").split(",").map(x=>x.trim()).filter(Boolean);
 const grants=crearGrantsV2({db,identidad,contactos});
 const compradoresWS=crearCanalCompradores({WebSocketServer,identidad,grants,origen});
@@ -77,20 +79,28 @@ server.on("upgrade",(req,socket,head)=>{
     compradoresWS.upgrade(req,socket,head);
     return;
   }
-  if(!http.websocketAdmin(req)){
-    socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-  wss.handleUpgrade(req,socket,head,ws=>{
-    const session=identidad.leerAdmin(req.headers.cookie);
-    if(!session){ws.close(1008,"Sesión inválida");return;}
-    ws.hsCookie=req.headers.cookie;
-    const timeout=setTimeout(()=>ws.close(1008,"Sesión expirada"),
-      Math.max(0,session.exp-Date.now()));
-    ws.on("close",()=>clearTimeout(timeout));
-    wss.emit("connection",ws,req);
-  });
+  // Una sesión administrativa antigua no puede seguir entrando por WebSocket
+  // después de cambiar la contraseña en otro proceso de Render.
+  void (async()=>{
+    try{await almacenAdmin.sincronizar();}
+    catch(_){
+      socket.destroy();
+      return;
+    }
+    if(!http.websocketAdmin(req)){
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();return;
+    }
+    wss.handleUpgrade(req,socket,head,ws=>{
+      const session=identidad.leerAdmin(req.headers.cookie);
+      if(!session){ws.close(1008,"Sesión inválida");return;}
+      ws.hsCookie=req.headers.cookie;
+      const timeout=setTimeout(()=>ws.close(1008,"Sesión expirada"),
+        Math.max(0,session.exp-Date.now()));
+      ws.on("close",()=>clearTimeout(timeout));
+      wss.emit("connection",ws,req);
+    });
+  })().catch(()=>{try{socket.destroy();}catch(_){}});
 });
 app.use(express.static(path.join(__dirname,"public")));
 
@@ -398,6 +408,42 @@ function resultadoPublico(res,error){
 app.post("/api/admin/login",http.login);
 app.get("/api/admin/session",http.estadoAdmin);
 app.post("/api/admin/logout",http.logout);
+const intentosCambioClave=new Map();
+app.post("/api/admin/cambiar-clave",http.adminWrite,async(req,res)=>{
+  const ip=String(req.socket?.remoteAddress||"desconocido").slice(0,120);
+  const ahora=Date.now();
+  let intentos=intentosCambioClave.get(ip)||{first:ahora,n:0};
+  if(ahora-intentos.first>15*60*1000){
+    intentos={first:ahora,n:0};intentosCambioClave.delete(ip);
+  }
+  if(intentos.n>=5)return res.status(429).json({error:"CAMBIO_CLAVE_TEMPORALMENTE_LIMITADO"});
+  try{
+    await almacenAdmin.cambiar({
+      actual:req.body?.actual,
+      nueva:req.body?.nueva
+    });
+    intentosCambioClave.delete(ip);
+    // Invalidar todas las ventanas y cerrar la actual: se inicia sesión de nuevo.
+    for(const cliente of wss.clients){
+      try{cliente.close(1008,"Sesión administrativa renovada");}catch(_){}
+    }
+    res.setHeader("Set-Cookie",identidad.borrarCookie());
+    res.setHeader("Cache-Control","no-store");
+    return res.json({ok:true,relogin:true});
+  }catch(error){
+    const motivo=String(error?.message||"");
+    if(motivo==="HS_ADMIN_CLAVE_ACTUAL_INCORRECTA"){
+      intentos.n++;intentosCambioClave.set(ip,intentos);
+      return res.status(403).json({error:"CLAVE_ACTUAL_INCORRECTA"});
+    }
+    if(motivo==="HS_ADMIN_CLAVE_NUEVA_LONGITUD" ||
+      motivo==="HS_ADMIN_CLAVE_SIN_CAMBIOS"){
+      return res.status(400).json({error:motivo});
+    }
+    console.error("HogarStock: cambio de clave no completado.");
+    return res.status(503).json({error:"CAMBIO_CLAVE_NO_CONFIRMADO"});
+  }
+});
 
 app.get("/api/admin/compra-activa",http.admin,async(req,res)=>{
   try {
@@ -609,6 +655,7 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
       throw Error("HS_WA_AUTH_TURSO_CIFRADO_REQUERIDO_ANTES_DE_PRODUCCION");
     }
     await initDB();
+    await almacenAdmin.init();
     await grants.init();
     const puerto = process.env.PORT || 3000;
     server.listen(puerto, soloLaboratorio ? "127.0.0.1" : undefined, () => {
