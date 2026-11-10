@@ -211,6 +211,15 @@
       actual.onerror = () => actual.close();
       actual.onclose = () => programarReconexionWS();
     }
+    function iconoCategoria(nombre){
+      const c=String(nombre).toLocaleLowerCase("es");
+      if(/carne|pescad/.test(c))return "🐟";
+      if(/fruta|verdura/.test(c))return "🥬";
+      if(/lácteo|lacteo|huevo/.test(c))return "🥛";
+      if(/despensa|aliment/.test(c))return "◈";
+      if(/limpieza|higiene/.test(c))return "✧";
+      return "▦";
+    }
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
       if (categoriasAbiertas.has(cat)) categoriasAbiertas.delete(cat);
@@ -299,9 +308,9 @@
         const tieneAgotados = agrupados[cat].some(p => p.agotado);
         const estaAbierta = isSearching || categoriasAbiertas.has(cat) || tieneAgotados;
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
-        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">#</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
+        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
-          html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : 'Disponible'}</span></button>`;
+          html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button>`;
         });
         html += `</div></section>`;
       }
@@ -326,8 +335,24 @@
         sincronizarCatalogo();
       }finally{cambiandoProducto=false;}
     }
+    // Alias opcionales: solo en este navegador, sin escrituras en Turso.
+    const ALIAS_KEY="hs_contact_alias_v1";
+    function aliasContactos(){
+      try{
+        const v=JSON.parse(localStorage.getItem(ALIAS_KEY)||"{}");
+        return v&&typeof v==="object"&&!Array.isArray(v)?v:{};
+      }catch(_){return {};}
+    }
+    function guardarAlias(numero,nombre){
+      const data=aliasContactos();
+      if(nombre)data[numero]=nombre;
+      else delete data[numero];
+      try{localStorage.setItem(ALIAS_KEY,JSON.stringify(data));return true;}
+      catch(_){return false;}
+    }
     async function cargarContactos() {
       const cont=document.getElementById("contactosSeleccionados");
+      const marcados=new Set([...cont.querySelectorAll("input:checked")].map(x=>x.value));
       try {
         const r=await fetch("/api/admin/contactos");
         if(!r.ok)throw Error("CONTACTOS_NO_DISPONIBLES");
@@ -337,13 +362,33 @@
           cont.textContent="No hay contactos autorizados.";
           return;
         }
-        for(const numero of d.telefonos){
-          const label=document.createElement("label");
-          label.className="contact-option";
-          const cb=document.createElement("input");
-          cb.type="checkbox";cb.value=numero;
-          const span=document.createElement("span");
-          span.textContent=numero;label.append(cb,span);cont.append(label);
+        const alias=aliasContactos();
+        for(const [i,numero] of d.telefonos.entries()){
+          const row=document.createElement("div");row.className="contact-option";
+          const label=document.createElement("label");label.className="contact-identity";
+          const cb=document.createElement("input");cb.type="checkbox";cb.value=numero;
+          cb.checked=marcados.has(numero);
+          const info=document.createElement("span");info.className="contact-info";
+          const nombre=document.createElement("strong");
+          nombre.textContent=alias[numero]||("Contacto "+(i+1));
+          const subtitulo=document.createElement("small");
+          subtitulo.textContent=numero;
+          info.append(nombre,subtitulo);label.append(cb,info);
+          const editar=document.createElement("button");
+          editar.type="button";editar.className="contact-edit";editar.textContent="Editar";
+          editar.setAttribute("aria-label","Cambiar nombre de "+numero);
+          editar.addEventListener("click",()=>{
+            const respuesta=prompt("Nombre para este contacto (solo en este navegador):",
+              aliasContactos()[numero]||"");
+            if(respuesta===null)return;
+            const limpio=respuesta.trim();
+            if(limpio.length>40){mostrarMensaje("El nombre no puede superar 40 caracteres.","err");return;}
+            if(!guardarAlias(numero,limpio)){
+              mostrarMensaje("No se pudo guardar el nombre en este navegador.","err");return;
+            }
+            nombre.textContent=limpio||("Contacto "+(i+1));
+          });
+          row.append(label,editar);cont.append(row);
         }
       }catch(_){cont.textContent="Introduce manualmente un número autorizado.";}
     }
