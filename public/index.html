@@ -182,7 +182,7 @@
       document.getElementById("metricPending").textContent=String(pendientes);
       document.getElementById("metricAvailable").textContent=String(total-pendientes);
     }
-    let categoriasAbiertas = new Set();
+    let categoriaAbierta = null; // Acordeón: una sola categoría abierta.
     // El alojamiento Free puede suspender/reiniciar la conexión: resincronizar al reconectar.
     let ws = null;
     let reintentoWS = null;
@@ -226,8 +226,7 @@
     }
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
-      if (categoriasAbiertas.has(cat)) categoriasAbiertas.delete(cat);
-      else categoriasAbiertas.add(cat);
+      categoriaAbierta = categoriaAbierta === cat ? null : cat;
       filtrarProductos();
     }
     function filtrarProductos() {
@@ -309,8 +308,9 @@
       });
       let html = "";
       for (const cat in agrupados) {
-        const tieneAgotados = agrupados[cat].some(p => p.agotado);
-        const estaAbierta = isSearching || categoriasAbiertas.has(cat) || tieneAgotados;
+        // En búsqueda se muestran los resultados; fuera de ella solo una categoría.
+        // Los productos pendientes no fuerzan la apertura de otra categoría.
+        const estaAbierta = isSearching || categoriaAbierta === cat;
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
         html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
@@ -374,7 +374,7 @@
           cb.checked=marcados.has(numero);
           const info=document.createElement("span");info.className="contact-info";
           const nombre=document.createElement("strong");
-          nombre.textContent=alias[numero]||("Contacto "+(i+1));
+          nombre.textContent=alias[numero]||d.nombres?.[numero]||("Contacto "+(i+1));
           const subtitulo=document.createElement("small");
           subtitulo.textContent=numero;
           info.append(nombre,subtitulo);label.append(cb,info);
@@ -383,7 +383,7 @@
           editar.setAttribute("aria-label","Cambiar nombre de "+numero);
           editar.addEventListener("click",()=>{
             const respuesta=prompt("Nombre para este contacto (solo en este navegador):",
-              aliasContactos()[numero]||"");
+              aliasContactos()[numero]||d.nombres?.[numero]||"");
             if(respuesta===null)return;
             const limpio=respuesta.trim();
             if(limpio.length>40){mostrarMensaje("El nombre no puede superar 40 caracteres.","err");return;}
