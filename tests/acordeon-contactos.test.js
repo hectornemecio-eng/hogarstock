@@ -65,12 +65,13 @@ test("UI: solo una categoría abierta; pendientes no fuerzan su apertura; buscar
   Socket.OPEN=1;Socket.CONNECTING=0;
   const cache=new Map();
   const x={document:{getElementById:makeNode,createElement:tag=>makeNode("creado-"+tag+"-"+Math.random()),
-    addEventListener(){},hidden:false},
+    addEventListener(){},querySelectorAll(){return []},hidden:false},
     location:{protocol:"https:",host:"hogarstock.example",replace(){}},
     fetch:fetchMock,WebSocket:Socket,console,Math,Set,URL,
     localStorage:{getItem:k=>cache.get(k)||null,setItem:(k,v)=>cache.set(k,v)},
     encodeURIComponent,decodeURIComponent,confirm:()=>false,prompt:()=>null,
-    setTimeout:()=>0,clearTimeout(){},setInterval:()=>0
+    setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,
+    requestAnimationFrame:callback=>callback()
   };
   x.window=x;
   vm.runInNewContext(src+';globalThis.__testApi={setProductos(items){allProductos=items;filtrarProductos()},toggleCategoria};',x);
