@@ -407,7 +407,24 @@ app.get("/api/admin/compra-activa",http.admin,async(req,res)=>{
   }catch(error){resultadoPublico(res,error);}
 });
 app.get("/api/admin/contactos",http.admin,(req,res)=>{
-  res.json({telefonos:grants.listarContactos()});
+  // Los nombres solo están en el entorno privado de Render, nunca en el repositorio.
+  // Únicamente se muestran a administradores y para números ya autorizados.
+  const telefonos=grants.listarContactos();
+  const nombres=Object.create(null);
+  let configurados={};
+  try{
+    const datos=JSON.parse(process.env.WA_CONTACT_NAMES_JSON||"{}");
+    if(datos && typeof datos==="object" && !Array.isArray(datos))configurados=datos;
+  }catch(_){console.warn("HogarStock: formato de alias privados inválido.");}
+  for(const numero of telefonos){
+    if(!Object.prototype.hasOwnProperty.call(configurados,numero))continue;
+    const valor=configurados[numero];
+    if(typeof valor==="string" && valor.trim().length>0 && valor.trim().length<=40){
+      nombres[numero]=valor.trim();
+    }
+  }
+  res.setHeader("Cache-Control","no-store");
+  res.json({telefonos,nombres});
 });
 app.get("/api/productos",http.admin,async(req,res)=>{
   try {
