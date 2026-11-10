@@ -153,12 +153,13 @@ async function crearRespaldoCifrado(db,contrasena){
 }
 // SOLO laboratorio: restaurar en una base local explícitamente suministrada;
 // jamás exponer esto en rutas web ni conectar la restauración a Turso real.
-async function restaurarAislado(dbLocal,snapshot){
-  if(!dbLocal||typeof dbLocal.execute!=="function"||
-    !dbLocal.protocol?.startsWith("file:") && dbLocal.protocol!=="memory:")
-    throw Error("HS_BACKUP_RESTAURACION_SOLO_LOCAL");
+async function restaurarAislado(snapshot){
   if(!snapshot||snapshot.formato!=="HOGARSTOCK_SNAPSHOT_V1")
     throw Error("HS_BACKUP_SNAPSHOT_INVALIDO");
+  // Crear internamente la base EN MEMORIA; ningún caller puede pasar una DB remota.
+  const {createClient}=require("@libsql/client");
+  const dbLocal=createClient({url:"file::memory:"});
+  try{
   await dbLocal.execute("PRAGMA foreign_keys=OFF");
   const bases=snapshot.esquema.filter(x=>x.type==="table"&&x.sql);
   for(const item of bases)await dbLocal.execute(item.sql);
@@ -196,5 +197,6 @@ async function restaurarAislado(dbLocal,snapshot){
       throw Error("HS_BACKUP_RESTAURACION_DISTINTA");
   }
   return {ok:true,tablas:snapshot.tablas.length,filas:snapshot.totalFilas};
+  }finally{dbLocal.close();}
 }
 module.exports={crearRespaldoCifrado,abrirRespaldo,obtenerSnapshot,restaurarAislado};
