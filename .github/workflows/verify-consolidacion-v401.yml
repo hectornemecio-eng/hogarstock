@@ -1,0 +1,30 @@
+name: HogarStock - consolidacion funcional v4.01
+on:
+  push:
+    branches: [consolidacion-v401-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  regresion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias del proyecto sin scripts externos
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Comprobar sintaxis servidor y pruebas
+        run: |
+          node --check server.js
+          node --check tests/consolidacion-v401.test.js
+      - name: Pruebas integrales con base SQLite ficticia
+        run: node --test tests/consolidacion-v401.test.js tests/ui-v396.test.js tests/reenvio-whatsapp-v397.test.js tests/buyer-close-message-v398.test.js tests/acordeon-contactos.test.js tests/acordeon-scroll-v400.test.js
+      - name: Proteger entorno
+        run: |
+          test ! -f .env
+          test ! -f auth.json
