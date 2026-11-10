@@ -204,7 +204,7 @@
       actual.onmessage = e => {
         let data;
         try { data = JSON.parse(e.data); } catch (_) { return; }
-        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); }
+        if (data.type === "update") { allProductos = data.productos; filtrarProductos(); void cargarEstadoCompra(); }
         if (data.type === "qr_update") checkWAStatus();
         if (data.type === "compra_update") void cargarEstadoCompra();
       };
