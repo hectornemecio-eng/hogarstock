@@ -87,6 +87,27 @@
       </label>
       <button id="btnEnviar" type="button" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista compartida</button>
       <div id="estado" role="status" aria-live="polite"></div>
+      <details class="backup-panel">
+        <summary>Descargar copia de seguridad</summary>
+        <form id="formRespaldo" onsubmit="descargarRespaldo(event)">
+          <p>Guarda una copia cifrada de todas las tablas. No borra ni modifica productos o compras.</p>
+          <label for="backupAdminPassword">Tu contraseña de HogarStock</label>
+          <input id="backupAdminPassword" type="password" autocomplete="current-password"
+            required minlength="8" maxlength="200">
+          <label for="backupPass">Clave para proteger este respaldo (mínimo 12 caracteres)</label>
+          <input id="backupPass" type="password" autocomplete="new-password"
+            required minlength="12" maxlength="200">
+          <label for="backupConfirm">Repetir clave del respaldo</label>
+          <input id="backupConfirm" type="password" autocomplete="new-password"
+            required minlength="12" maxlength="200">
+          <button type="submit" id="btnRespaldo">Descargar respaldo protegido</button>
+          <p id="backupEstado" role="status" aria-live="polite"></p>
+          <p>Guarda el archivo y su clave en lugares seguros y separados.
+          La clave del respaldo no es necesariamente la de acceso a HogarStock.</p>
+          <p>Para recuperar WhatsApp también se necesita la clave de cifrado
+          configurada de forma privada en Render.</p>
+        </form>
+      </details>
       <details class="password-panel">
         <summary>Cambiar contraseña de acceso</summary>
         <form id="formCambiarClave" onsubmit="cambiarClave(event)" autocomplete="on">
@@ -205,6 +226,63 @@
     function mostrarMensaje(mensaje,tipo="ok"){
       const est=document.getElementById("estado");
       est.className=tipo;est.textContent=mensaje;est.style.display="block";
+    }
+    async function descargarRespaldo(event){
+      event.preventDefault();
+      const actual=document.getElementById("backupAdminPassword");
+      const frase=document.getElementById("backupPass");
+      const confirmar=document.getElementById("backupConfirm");
+      const boton=document.getElementById("btnRespaldo");
+      const aviso=document.getElementById("backupEstado");
+      if(frase.value.length<12 || frase.value.length>200){
+        aviso.className="err";
+        aviso.textContent="La clave de este respaldo debe tener entre 12 y 200 caracteres.";
+        return;
+      }
+      if(frase.value!==confirmar.value){
+        aviso.className="err";
+        aviso.textContent="Las claves del respaldo no coinciden.";
+        return;
+      }
+      boton.disabled=true;
+      aviso.className="";
+      aviso.textContent="Preparando una copia cifrada y comprobando su integridad...";
+      try{
+        const res=await fetch("/api/admin/respaldo",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({claveActual:actual.value,fraseRespaldo:frase.value}),
+          cache:"no-store"
+        });
+        if(!res.ok){
+          aviso.className="err";
+          aviso.textContent=res.status===403?
+            "La contraseña actual de HogarStock no es correcta.":
+            res.status===429?"Ya se está preparando un respaldo. Intenta de nuevo después.":
+            "No se pudo completar el respaldo; no se ha descargado ningún archivo.";
+          return;
+        }
+        const blob=await res.blob();
+        if(blob.size<50)throw Error("RESPALDO_INVALIDO");
+        const nombre=res.headers.get("X-HS-Backup-Name");
+        if(!/^HogarStock_respaldo_[0-9-]+\.hsbk$/.test(nombre||""))
+          throw Error("NOMBRE_RESPALDO_INVALIDO");
+        const url=URL.createObjectURL(blob);
+        try{
+          const enlace=document.createElement("a");
+          enlace.href=url;enlace.download=nombre;
+          document.body.appendChild(enlace);
+          enlace.click();
+          enlace.remove();
+        }finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}
+        aviso.className="ok";
+        aviso.textContent="Respaldo preparado y verificado. Comprueba la descarga y guarda la clave de recuperación.";
+      }catch(_){
+        aviso.className="err";
+        aviso.textContent="No se pudo completar o descargar el respaldo. Revisa la conexión.";
+      }finally{
+        actual.value="";frase.value="";confirmar.value="";
+        boton.disabled=false;
+      }
     }
     async function cambiarClave(event){
       event.preventDefault();
