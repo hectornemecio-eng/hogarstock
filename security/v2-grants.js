@@ -293,15 +293,13 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       if(r.rows.length===0)throw Error("HS_V2_SIN_COMPRA_ACTIVA");
       if(r.rows.length>1)throw Error("HS_V2_MULTIPLES_COMPRAS_ABIERTAS");
       const compraId=String(r.rows[0].compra_id);
-      const [items,telefonos]=await Promise.all([
-        tx.execute({sql:`SELECT p.nombre FROM ${ITEMS} gi
-          JOIN productos p ON p.id=gi.producto_id
-          WHERE gi.compra_id=? AND gi.estado='pendiente' AND p.agotado=1
-          ORDER BY p.nombre`,args:[compraId]}),
-        tx.execute({sql:`SELECT telefono FROM ${CAB} WHERE compra_id=?
-          UNION SELECT telefono FROM ${ENVIOS} WHERE compra_id=? ORDER BY telefono`,
-          args:[compraId,compraId]})
-      ]);
+      const items=await tx.execute({sql:`SELECT p.nombre FROM ${ITEMS} gi
+        JOIN productos p ON p.id=gi.producto_id
+        WHERE gi.compra_id=? AND gi.estado='pendiente' AND p.agotado=1
+        ORDER BY p.nombre`,args:[compraId]});
+      const telefonos=await tx.execute({sql:`SELECT telefono FROM ${CAB} WHERE compra_id=?
+        UNION SELECT telefono FROM ${ENVIOS} WHERE compra_id=? ORDER BY telefono`,
+        args:[compraId,compraId]});
       const u=await tx.execute({sql:`UPDATE ${CAB} SET estado='finalizada'
         WHERE compra_id=? AND estado='abierta' AND expira>?`,args:[compraId,reloj()]});
       if(Number(u.rowsAffected)!==1)throw Error("HS_V2_COMPRA_CAMBIO_CONCURRENTE");
