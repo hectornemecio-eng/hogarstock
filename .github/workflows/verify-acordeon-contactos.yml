@@ -1,0 +1,26 @@
+name: HogarStock - acordeon y nombres de contactos privados
+on:
+  push:
+    branches: [feat-acordeon-contactos-2026-11-10]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxis y pruebas aisladas
+        run: |
+          node --check server.js
+          node --check tests/acordeon-contactos.test.js
+          node --test tests/acordeon-contactos.test.js
+      - name: Verificar que no hay secretos en el repositorio
+        run: |
+          test ! -f .env
+          test ! -f auth.json
