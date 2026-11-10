@@ -183,6 +183,7 @@
       document.getElementById("metricAvailable").textContent=String(total-pendientes);
     }
     let categoriaAbierta = null; // Acordeón: una sola categoría abierta.
+    let revisionAjusteCategoria = 0; // Evitar desplazamientos obsoletos.
     // El alojamiento Free puede suspender/reiniciar la conexión: resincronizar al reconectar.
     let ws = null;
     let reintentoWS = null;
@@ -227,7 +228,25 @@
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
       categoriaAbierta = categoriaAbierta === cat ? null : cat;
+      const abierta=categoriaAbierta===cat;
+      const revision=++revisionAjusteCategoria;
       filtrarProductos();
+      // Los encabezados se recrean al renderizar: restaurar el foco en el nuevo
+      // elemento y, solo al abrir, llevarlo al principio de la zona visible.
+      requestAnimationFrame(()=>{
+        if(revision!==revisionAjusteCategoria)return;
+        const encabezado=Array.from(document.querySelectorAll("#lista .category-header"))
+          .find(el=>el.dataset.categoria===cat);
+        if(!encabezado)return;
+        encabezado.focus({preventScroll:true});
+        if(abierta){
+          const reducir=window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          encabezado.scrollIntoView({
+            behavior:reducir?"auto":"smooth",block:"start",inline:"nearest"
+          });
+        }
+      });
     }
     function filtrarProductos() {
       const busqueda = document.getElementById("search").value.toLowerCase();
@@ -312,7 +331,7 @@
         // Los productos pendientes no fuerzan la apertura de otra categoría.
         const estaAbierta = isSearching || categoriaAbierta === cat;
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
-        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
+        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" data-categoria="${escapar(cat)}" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
           html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button>`;
         });
