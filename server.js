@@ -6,6 +6,7 @@ const { WebSocketServer } = require("ws");
 const { db, initDB } = require("./db");
 const {crearIdentidadV2}=require("./security/v2-identity");
 const {crearAlmacenClaveAdmin}=require("./security/v2-password-store");
+const {crearRespaldoCifrado}=require("./backup/backup-safe");
 const {crearHTTPV2}=require("./security/v2-http");
 const {crearCanalCompradores}=require("./security/v2-buyer-ws");
 const {crearGrantsV2}=require("./security/v2-grants");
@@ -451,6 +452,38 @@ app.get("/api/admin/compra-activa",http.admin,async(req,res)=>{
     res.setHeader("Cache-Control","no-store");
     res.json(compra);
   }catch(error){resultadoPublico(res,error);}
+});
+// v4.03: descarga cifrada SOLO LECTURA. Las claves no se registran ni almacenan.
+let respaldoEnCurso=false;
+app.post("/api/admin/respaldo",http.adminWrite,async(req,res)=>{
+  const actual=req.body?.claveActual;
+  const frase=req.body?.fraseRespaldo;
+  if(typeof actual!=="string" || !identidad.validarPassword(actual))
+    return res.status(403).json({error:"CLAVE_ADMIN_INCORRECTA"});
+  if(typeof frase!=="string" || frase.length<12 || frase.length>200)
+    return res.status(400).json({error:"CLAVE_RESPALDO_MINIMO_12"});
+  if(respaldoEnCurso)return res.status(429).json({error:"RESPALDO_YA_EN_CURSO"});
+  respaldoEnCurso=true;
+  try{
+    const {archivo,tablas,filas}=await crearRespaldoCifrado(db,frase);
+    const fecha=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    const nombre="HogarStock_respaldo_"+fecha+".hsbk";
+    res.setHeader("Cache-Control","no-store");
+    res.setHeader("Content-Type","application/octet-stream");
+    res.setHeader("Content-Disposition",'attachment; filename="'+nombre+'"');
+    res.setHeader("X-HS-Backup-Name",nombre);
+    res.setHeader("X-HS-Backup-Stats",tablas+" tablas; "+filas+" filas");
+    res.setHeader("Content-Length",archivo.length);
+    return res.end(archivo);
+  }catch(error){
+    const codigo=String(error?.message||"");
+    if(codigo==="HS_BACKUP_TABLAS_OBLIGATORIAS_AUSENTES"){
+      console.error("HogarStock: respaldo bloqueado por falta de tablas obligatorias.");
+      return res.status(503).json({error:"RESPALDO_INCOMPLETO_BLOQUEADO"});
+    }
+    console.error("HogarStock: no se pudo verificar el respaldo.");
+    return res.status(503).json({error:"RESPALDO_NO_CONFIRMADO"});
+  }finally{respaldoEnCurso=false;}
 });
 app.get("/api/admin/contactos",http.admin,(req,res)=>{
   // Los nombres solo están en el entorno privado de Render, nunca en el repositorio.
