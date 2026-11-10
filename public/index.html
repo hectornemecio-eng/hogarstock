@@ -87,6 +87,24 @@
       </label>
       <button id="btnEnviar" type="button" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista compartida</button>
       <div id="estado" role="status" aria-live="polite"></div>
+      <details class="password-panel">
+        <summary>Cambiar contraseña de acceso</summary>
+        <form id="formCambiarClave" onsubmit="cambiarClave(event)" autocomplete="on">
+          <p>Elige tu propia contraseña, desde 8 caracteres. Recomendamos 12 o más.</p>
+          <label for="claveActual">Contraseña actual</label>
+          <input id="claveActual" type="password" autocomplete="current-password"
+            required minlength="8" maxlength="200">
+          <label for="claveNueva">Nueva contraseña</label>
+          <input id="claveNueva" type="password" autocomplete="new-password"
+            required minlength="8" maxlength="200">
+          <label for="claveConfirmar">Repetir nueva contraseña</label>
+          <input id="claveConfirmar" type="password" autocomplete="new-password"
+            required minlength="8" maxlength="200">
+          <button type="submit" id="btnCambiarClave">Guardar nueva contraseña</button>
+          <p id="estadoClave" role="status" aria-live="polite"></p>
+          <p>Después de cambiarla, tendrás que iniciar sesión nuevamente.</p>
+        </form>
+      </details>
     </aside>
   </div>
   <div id="qrModal">
@@ -187,6 +205,55 @@
     function mostrarMensaje(mensaje,tipo="ok"){
       const est=document.getElementById("estado");
       est.className=tipo;est.textContent=mensaje;est.style.display="block";
+    }
+    async function cambiarClave(event){
+      event.preventDefault();
+      const anterior=document.getElementById("claveActual");
+      const nueva=document.getElementById("claveNueva");
+      const confirmar=document.getElementById("claveConfirmar");
+      const aviso=document.getElementById("estadoClave");
+      const boton=document.getElementById("btnCambiarClave");
+      const valorActual=anterior.value,valorNuevo=nueva.value;
+      if(valorNuevo.length<8||valorNuevo.length>200){
+        aviso.textContent="La contraseña debe tener entre 8 y 200 caracteres.";
+        aviso.className="err";return;
+      }
+      if(valorNuevo!==confirmar.value){
+        aviso.textContent="Las contraseñas nuevas no coinciden.";
+        aviso.className="err";return;
+      }
+      if(valorActual===valorNuevo){
+        aviso.textContent="Elige una contraseña distinta de la anterior.";
+        aviso.className="err";return;
+      }
+      boton.disabled=true;
+      aviso.className="";
+      aviso.textContent="Guardando de forma segura...";
+      try{
+        const r=await fetch("/api/admin/cambiar-clave",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({actual:valorActual,nueva:valorNuevo}),
+          cache:"no-store"
+        });
+        const d=await r.json();
+        if(!r.ok||!d.ok){
+          aviso.className="err";
+          aviso.textContent=r.status===403?"La contraseña actual no es correcta.":
+            r.status===429?"Demasiados intentos. Prueba más tarde.":
+            r.status===400?"Comprueba la longitud y que sea diferente.":
+            "No se pudo confirmar el cambio. Conserva la contraseña anterior y comprueba el acceso.";
+          return;
+        }
+        aviso.className="ok";
+        aviso.textContent="Contraseña actualizada. Accede nuevamente con la nueva.";
+        location.replace("/admin-login.html");
+      }catch(_){
+        aviso.className="err";
+        aviso.textContent="No se pudo verificar el resultado. Comprueba el acceso antes de repetir el cambio.";
+      }finally{
+        anterior.value="";nueva.value="";confirmar.value="";
+        boton.disabled=false;
+      }
     }
 
     let allProductos = [];

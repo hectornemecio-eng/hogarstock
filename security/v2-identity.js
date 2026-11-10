@@ -1,6 +1,6 @@
 "use strict";
-// Prototipo de identidad privada V2. No abre conexiones, no imprime secretos.
-// No debe desplegarse sin integrar completamente comprador, CSRF, WS y tests E2E.
+// Identidad V2: sesiones administrativas efímeras y tokens de compradores.
+ // El hash de administrador puede rotarse a través de Turso; nunca guardar texto claro.
 const crypto = require("node:crypto");
 const HEX64 = /^[a-f0-9]{64}$/i;
 const COOKIE_NAME = "__Host-hs_v2_admin";
@@ -23,7 +23,7 @@ function safeMacEqual(a, b) {
   return crypto.timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
 }
 function adminHash(password, saltHex) {
-  if (typeof password !== "string" || password.length < 12 || password.length > 200) {
+  if (typeof password !== "string" || password.length < 8 || password.length > 200) {
     throw Error("ADMIN_CLAVE_FUERA_DE_RANGO");
   }
   if (!HEX64.test(saltHex)) throw Error("ADMIN_SALT_INVALIDA");
@@ -55,14 +55,33 @@ function crearIdentidadV2({entorno, reloj = Date.now, aleatorio = crypto.randomB
   const adminSecret = Buffer.from(e.HS_V2_SESSION_SECRET, "hex");
   const buyerSecret = Buffer.from(e.HS_V2_BUYER_SECRET, "hex");
   const sesionesActivas = new Map();
+  let saltAdmin=e.HS_V2_ADMIN_PASSWORD_SALT;
+  let hashAdmin=e.HS_V2_ADMIN_PASSWORD_HASH;
+  let revisionAdmin=0;
+  function aplicarCredencialesAdmin({salt,hash,revision}={}){
+    if(!HEX64.test(salt||"") || !HEX64.test(hash||"") ||
+      !Number.isSafeInteger(revision) || revision<1)throw Error("HS_ADMIN_ROTACION_INVALIDA");
+    if(revision<revisionAdmin)throw Error("HS_ADMIN_REVISION_OBSOLETA");
+    if(revision===revisionAdmin){
+      if(salt!==saltAdmin || hash!==hashAdmin)throw Error("HS_ADMIN_REVISION_CONFLICTO");
+      return;
+    }
+    saltAdmin=salt;
+    hashAdmin=hash;
+    revisionAdmin=revision;
+    // Invalida todas las sesiones existentes; no afecta los enlaces de comprador.
+    sesionesActivas.clear();
+  }
+  function obtenerRevisionAdmin(){return revisionAdmin;}
+  function revocarTodosAdmin(){sesionesActivas.clear();}
   function sello(secret, payload) {
     return crypto.createHmac("sha256",secret).update(payload).digest("hex");
   }
   function validarPassword(password) {
     // Evita corta-circuito basado en comparación de cadenas.
-    if (typeof password !== "string" || password.length<12 || password.length>200) return false;
-    const expected=Buffer.from(e.HS_V2_ADMIN_PASSWORD_HASH,"hex");
-    const actual=Buffer.from(adminHash(password,e.HS_V2_ADMIN_PASSWORD_SALT),"hex");
+    if (typeof password !== "string" || password.length<8 || password.length>200) return false;
+    const expected=Buffer.from(hashAdmin,"hex");
+    const actual=Buffer.from(adminHash(password,saltAdmin),"hex");
     return crypto.timingSafeEqual(actual,expected);
   }
   function emitirAdmin() {
@@ -134,7 +153,8 @@ function crearIdentidadV2({entorno, reloj = Date.now, aleatorio = crypto.randomB
     if(!safeMacEqual(sello(buyerSecret,body),parts[3]))return null;
     return Object.freeze({hash:crypto.createHash("sha256").update(token).digest("hex"),idCompra:parts[2],exp:Number(parts[1])});
   }
-  return Object.freeze({validarPassword,emitirAdmin,leerAdmin,revocarAdmin,cookieHeader,borrarCookie,
+  return Object.freeze({validarPassword,aplicarCredencialesAdmin,obtenerRevisionAdmin,
+    revocarTodosAdmin,emitirAdmin,leerAdmin,revocarAdmin,cookieHeader,borrarCookie,
     emitirComprador,recuperarComprador,leerComprador});
 }
 module.exports={crearIdentidadV2,adminHash,generarMaterial,safeMacEqual,
