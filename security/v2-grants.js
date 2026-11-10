@@ -263,6 +263,53 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
         compraId:abiertas.rows.length===1?String(abiertas.rows[0].compra_id):null});
     });
   }
+
+  // Estado administrativo de la única compra activa. No expone tokens de comprador.
+  async function estadoCompra() {
+    exigirInit();
+    const r=await db.execute({sql:`SELECT compra_id,creada,expira FROM ${CAB}
+      WHERE estado='abierta' AND expira>? ORDER BY creada DESC LIMIT 2`,args:[reloj()]});
+    if(r.rows.length===0)return Object.freeze({activa:false});
+    if(r.rows.length>1)throw Error("HS_V2_MULTIPLES_COMPRAS_ABIERTAS");
+    const c=r.rows[0],id=String(c.compra_id);
+    const [contactosCompra,pending]=await Promise.all([
+      db.execute({sql:`SELECT telefono FROM ${CAB} WHERE compra_id=?
+        UNION SELECT telefono FROM ${ENVIOS} WHERE compra_id=? ORDER BY telefono`,args:[id,id]}),
+      db.execute({sql:`SELECT COUNT(*) AS total FROM ${ITEMS} gi
+        JOIN productos p ON p.id=gi.producto_id
+        WHERE gi.compra_id=? AND gi.estado='pendiente' AND p.agotado=1`,args:[id]})
+    ]);
+    return Object.freeze({activa:true,compraId:id,creada:Number(c.creada),
+      expira:Number(c.expira),pendientes:Number(pending.rows[0]?.total||0),
+      telefonos:contactosCompra.rows.map(x=>String(x.telefono))});
+  }
+  // Cerrar desde el panel con la misma política de notificación que el comprador.
+  // Se ejecuta en una transacción; no requiere ni revela el token.
+  async function finalizarAdmin() {
+    exigirInit();
+    return enTransaccion(db,async tx=>{
+      const r=await tx.execute({sql:`SELECT compra_id FROM ${CAB}
+        WHERE estado='abierta' AND expira>? ORDER BY creada DESC LIMIT 2`,args:[reloj()]});
+      if(r.rows.length===0)throw Error("HS_V2_SIN_COMPRA_ACTIVA");
+      if(r.rows.length>1)throw Error("HS_V2_MULTIPLES_COMPRAS_ABIERTAS");
+      const compraId=String(r.rows[0].compra_id);
+      const [items,telefonos]=await Promise.all([
+        tx.execute({sql:`SELECT p.nombre FROM ${ITEMS} gi
+          JOIN productos p ON p.id=gi.producto_id
+          WHERE gi.compra_id=? AND gi.estado='pendiente' AND p.agotado=1
+          ORDER BY p.nombre`,args:[compraId]}),
+        tx.execute({sql:`SELECT telefono FROM ${CAB} WHERE compra_id=?
+          UNION SELECT telefono FROM ${ENVIOS} WHERE compra_id=? ORDER BY telefono`,
+          args:[compraId,compraId]})
+      ]);
+      const u=await tx.execute({sql:`UPDATE ${CAB} SET estado='finalizada'
+        WHERE compra_id=? AND estado='abierta' AND expira>?`,args:[compraId,reloj()]});
+      if(Number(u.rowsAffected)!==1)throw Error("HS_V2_COMPRA_CAMBIO_CONCURRENTE");
+      const pendientes=items.rows.map(x=>String(x.nombre));
+      return Object.freeze({compraId,faltan:pendientes.length,pendientes,
+        telefonos:telefonos.rows.map(x=>String(x.telefono))});
+    });
+  }
   async function hayCompraAbierta() {
     exigirInit();
     const r=await db.execute({sql:`SELECT 1 AS existe FROM ${CAB}`+
@@ -278,6 +325,6 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       args:[compraId]});
     return Number(r.rowsAffected)===1;
   }
-  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta,alternarProducto});
+  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta,alternarProducto,estadoCompra,finalizarAdmin});
 }
 module.exports={crearGrantsV2};
