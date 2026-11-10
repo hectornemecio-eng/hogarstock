@@ -388,6 +388,8 @@ function resultadoPublico(res,error){
     return res.status(403).json({error:"ACCESO_NO_AUTORIZADO"});
   if (msg.includes("YA_ABIERTA")||msg.includes("CERRADA_O_EXPIRADA")||msg.includes("CAMBIO_CONCURRENTE"))
     return res.status(409).json({error:"COMPRA_NO_DISPONIBLE"});
+  if (msg.includes("SIN_COMPRA_ACTIVA"))return res.status(409).json({error:"SIN_COMPRA_ACTIVA"});
+  if (msg.includes("MULTIPLES_COMPRAS_ABIERTAS"))return res.status(409).json({error:"ESTADO_COMPRA_INCONSISTENTE"});
   if (msg.includes("SIN_FALTANTES"))return res.status(409).json({error:"SIN_FALTANTES"});
   if (msg.includes("PRODUCTO_NO_AUTORIZADO"))return res.status(403).json({error:"PRODUCTO_NO_AUTORIZADO"});
   console.error("Error de operación HogarStock V2 seguro:",error?.code||"OPERACION_FALLIDA");
@@ -397,6 +399,13 @@ app.post("/api/admin/login",http.login);
 app.get("/api/admin/session",http.estadoAdmin);
 app.post("/api/admin/logout",http.logout);
 
+app.get("/api/admin/compra-activa",http.admin,async(req,res)=>{
+  try {
+    const compra=await grants.estadoCompra();
+    res.setHeader("Cache-Control","no-store");
+    res.json(compra);
+  }catch(error){resultadoPublico(res,error);}
+});
 app.get("/api/admin/contactos",http.admin,(req,res)=>{
   res.json({telefonos:grants.listarContactos()});
 });
@@ -490,6 +499,7 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
       enviados.push(numero);
     }
     const ok=enviados.length>0||yaEnviados.length>0;
+    broadcast({type:"compra_update"});
     return res.status(ok?200:503).json({
       ok,compraId:compra.compraId,cantidad:compra.cantidad,compartida:!compra.nueva,
       enviados,yaEnviados,fallidos,inciertos,
@@ -498,10 +508,28 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
   }catch(error){return resultadoPublico(res,error);}
   finally{envioListaEnCurso=false;}
 });
+app.post("/api/admin/finalizar-compra",http.adminWrite,async(req,res)=>{
+  try {
+    // Cerrar y notificar a los participantes reales; no crear nuevas compras.
+    const cierre=await grants.finalizarAdmin();
+    compradoresWS.notificar({compraId:cierre.compraId,tipo:"cerrada"});
+    broadcast({type:"compra_update"});
+    const texto=cierre.faltan===0
+      ? "✅ *Compra completada.* Todos los productos comprados."
+      : "⚠️ *Compra finalizada.*\\n\\nPendientes:\\n"+cierre.pendientes.map(x=>"- "+x).join("\\n");
+    let notificados=0;
+    for(const telefono of cierre.telefonos) {
+      try{await enviarWhatsApp(telefono,texto);notificados++;}
+      catch(_){console.error("HogarStock: una notificacion de cierre no confirmada.");}
+    }
+    res.json({ok:true,faltan:cierre.faltan,notificados,
+      destinatarios:cierre.telefonos.length});
+  }catch(error){resultadoPublico(res,error);}
+});
 app.post("/api/admin/revocar-compra",http.adminWrite,async(req,res)=>{
   try {
     const revocada=await grants.revocar({compraId:req.body?.compraId});
-    if(revocada)compradoresWS.notificar({compraId:req.body.compraId,tipo:"cerrada"});
+    if(revocada){compradoresWS.notificar({compraId:req.body.compraId,tipo:"cerrada"});broadcast({type:"compra_update"});}
     res.json({ok:true,revocada});
   }catch(error){resultadoPublico(res,error);}
 });
@@ -529,6 +557,7 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
   try {
     const cierre=await grants.finalizar({grant:req.hsCompra});
     compradoresWS.notificar({compraId:req.hsCompra.idCompra,tipo:"cerrada"});
+    broadcast({type:"compra_update"});
     const texto=cierre.faltan===0
       ? "✅ *Compra completada.* Todos los productos comprados."
       : "⚠️ *Compra finalizada.*\n\nPendientes:\n"+cierre.pendientes.map(x=>"- "+x).join("\n");
