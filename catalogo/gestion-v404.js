@@ -106,10 +106,35 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
       return {id,archivado:true};
     });
   }
+  async function listarArchivados() {
+    exigirInit();
+    const r=await db.execute("SELECT p.id,p.nombre,p.categoria,a.fecha FROM "+TABLA+
+      " a JOIN productos p ON p.id=a.producto_id ORDER BY a.fecha DESC,p.nombre,p.id");
+    return r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
+      categoria:String(x.categoria),fecha:Number(x.fecha)}));
+  }
+  async function recuperar({id}={}) {
+    id=idValido(id);
+    return txWrite(async tx=>{
+      const r=await tx.execute({sql:
+        "SELECT p.nombre,p.categoria FROM "+TABLA+
+        " a JOIN productos p ON p.id=a.producto_id WHERE p.id=? LIMIT 1",args:[id]});
+      if(!r.rows.length)throw Error("HS_CATALOGO_NO_ARCHIVADO");
+      const nombre=String(r.rows[0].nombre);
+      const categoria=String(r.rows[0].categoria);
+      // Evita recuperar un nombre que se reutilizo durante el archivado.
+      await duplicado(tx,nombre,categoria,id);
+      await vinculadoACompraActiva(tx,id);
+      const result=await tx.execute({sql:"DELETE FROM "+TABLA+" WHERE producto_id=?",args:[id]});
+      if(Number(result.rowsAffected)!==1)throw Error("HS_CATALOGO_CAMBIO_CONCURRENTE");
+      await tx.execute({sql:"UPDATE productos SET agotado=0 WHERE id=?",args:[id]});
+      return {id,nombre,categoria,recuperado:true,agotado:0};
+    });
+  }
   async function verificarActivo(tx,id) {
     exigirInit();
     await activo(tx,id);
   }
-  return Object.freeze({init,listar,crear,editar,archivar,verificarActivo});
+  return Object.freeze({init,listar,listarArchivados,crear,editar,archivar,recuperar,verificarActivo});
 }
 module.exports={crearGestionCatalogo};

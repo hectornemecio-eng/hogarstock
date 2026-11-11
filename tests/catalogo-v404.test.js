@@ -63,7 +63,7 @@ test("v4.04: archivado logico preserva filas y bloquea editar/archivar activo",a
 test("v4.04: las rutas requieren administrador con CSRF y no exponen escrituras a compradores",()=>{
   const server=fs.readFileSync("server.js","utf8");
   const ui=fs.readFileSync("public/index.html","utf8");
-  for(const accion of ["crear","editar","archivar"]){
+  for(const accion of ["crear","editar","archivar","recuperar"]){
     assert(server.includes('app.post("/api/admin/catalogo/'+accion+'",http.adminWrite'));
     assert(ui.includes("/api/admin/catalogo/"+accion));
   }
@@ -106,4 +106,47 @@ test("v4.04: escritura confirmada tiene respuesta de exito aunque falle notifica
   assert(procedimiento.includes("resultado=await accion()"));
   assert(procedimiento.includes("catch(error){return errorCatalogo(res,error);}"));
   assert(procedimiento.includes("return res.json({ok:true,...resultado})"));
+});
+
+test("v4.04: archivar y recuperar conserva identificador e historial, vuelve disponible",async()=>{
+  await laboratorio(async({db,catalogo})=>{
+    const p=await catalogo.crear({nombre:"Arroz integral",categoria:"Despensa"});
+    await db.execute({sql:"UPDATE productos SET agotado=1 WHERE id=?",args:[p.id]});
+    await catalogo.archivar({id:p.id});
+    const archivados=await catalogo.listarArchivados();
+    assert.equal(archivados.length,1);
+    assert.equal(archivados[0].id,p.id);
+    assert.equal((await catalogo.listar()).length,0);
+    const restaurado=await catalogo.recuperar({id:p.id});
+    assert.equal(restaurado.recuperado,true);
+    assert.equal(restaurado.agotado,0);
+    assert.equal((await catalogo.listarArchivados()).length,0);
+    const listado=await catalogo.listar();
+    assert.equal(listado.length,1);
+    assert.equal(listado[0].id,p.id);
+    assert.equal(listado[0].agotado,0);
+    await assert.rejects(catalogo.recuperar({id:p.id}),/HS_CATALOGO_NO_ARCHIVADO/);
+  });
+});
+test("v4.04: si se reutilizó nombre y categoría de archivado, restauración no duplica",async()=>{
+  await laboratorio(async({db,catalogo})=>{
+    const original=await catalogo.crear({nombre:"Café",categoria:"Despensa"});
+    await catalogo.archivar({id:original.id});
+    const nuevo=await catalogo.crear({nombre:"Café",categoria:"Despensa"});
+    await assert.rejects(catalogo.recuperar({id:original.id}),/HS_CATALOGO_DUPLICADO/);
+    assert.equal((await catalogo.listarArchivados()).length,1);
+    assert.equal((await catalogo.listar()).length,1);
+    assert.equal((await catalogo.listar())[0].id,nuevo.id);
+    await catalogo.editar({id:nuevo.id,nombre:"Café molido",categoria:"Despensa"});
+    await catalogo.recuperar({id:original.id});
+    assert.equal((await catalogo.listar()).length,2);
+  });
+});
+test("v4.04: ver archivados solo para administrador y recuperar requiere CSRF",()=>{
+  const server=fs.readFileSync("server.js","utf8");
+  const ui=fs.readFileSync("public/index.html","utf8");
+  assert(server.includes('app.get("/api/admin/catalogo/archivados",http.admin'));
+  assert(server.includes('app.post("/api/admin/catalogo/recuperar",http.adminWrite'));
+  assert(ui.includes('onclick="consultarArchivadosCatalogo()"'));
+  assert(ui.includes('onclick="recuperarProductoCatalogo()"'));
 });

@@ -17,7 +17,7 @@ original: se crea la tabla auxiliar `hs_catalogo_archivados`.
 - La tabla auxiliar queda incluida en futuras exportaciones dinámicas v4.03.
 
 ## Limitaciones
-- No existe pantalla para recuperar productos archivados todavía.
+- La recuperación está disponible en la interfaz; si el nombre/categoría fue reutilizado por un producto activo, debe editarse primero el producto en conflicto.
 - El archivado no sustituye una política de retención de datos.
 - El filtrado de duplicados depende de la semántica `lower()` de SQLite.
 - No se crean compras ni se envían mensajes de WhatsApp por estas operaciones.
@@ -48,3 +48,10 @@ permanece en su rama experimental original, totalmente separada.
 
 La candidata debe superar el CI en GitHub antes de solicitar autorización
 para publicar. En ausencia de autorización, no modificar `main` ni Render.
+
+## Recuperación de archivados (11/11/2026)
+- Nuevo listado de archivados exclusivo de administradores.
+- Recuperar preserva ID e historial y devuelve el producto como **disponible**, no agotado.
+- El mismo nombre y categoría no puede duplicarse entre productos activos.
+- Operación protegida por sesión y CSRF, en transacción de escritura.
+- Sin contacto con WhatsApp ni modificación de compras en curso.

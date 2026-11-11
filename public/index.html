@@ -110,6 +110,15 @@
           <button type="submit" id="btnCatalogoEditar">Guardar cambios</button>
           <button type="button" id="btnCatalogoArchivar" onclick="archivarProductoCatalogo()">Archivar producto</button>
         </form>
+        <div class="catalogo-recuperacion">
+          <p>¿Archivaste algo por error? Puedes recuperarlo sin perder su historial.</p>
+          <button type="button" id="btnConsultarArchivados" onclick="consultarArchivadosCatalogo()">Ver archivados</button>
+          <label for="catalogoArchivados">Productos archivados</label>
+          <select id="catalogoArchivados">
+            <option value="">Pulsa «Ver archivados»</option>
+          </select>
+          <button type="button" id="btnCatalogoRecuperar" onclick="recuperarProductoCatalogo()" disabled>Recuperar producto</button>
+        </div>
         <p id="catalogoEstado" role="status" aria-live="polite"></p>
       </details>
       <details class="backup-panel">
@@ -434,6 +443,51 @@
       }catch(e){avisarCatalogo("No se pudo editar: "+String(e.message||"ERROR"),true);}
       finally{seleccionarProductoCatalogo();}
     }
+    async function consultarArchivadosCatalogo(){
+      const btn=document.getElementById("btnConsultarArchivados");
+      const selector=document.getElementById("catalogoArchivados");
+      btn.disabled=true;
+      try{
+        const r=await fetch("/api/admin/catalogo/archivados",{cache:"no-store"});
+        if(!r.ok)throw Error("CONSULTA_ARCHIVADOS_FALLIDA");
+        const archivados=await r.json();
+        if(!Array.isArray(archivados))throw Error("LISTA_ARCHIVADOS_INVALIDA");
+        selector.replaceChildren();
+        const inicial=document.createElement("option");
+        inicial.value="";
+        inicial.textContent=archivados.length?"Selecciona un producto":"No hay productos archivados";
+        selector.append(inicial);
+        for(const p of archivados){
+          const op=document.createElement("option");
+          op.value=String(p.id);
+          op.textContent=p.categoria+" · "+p.nombre;
+          selector.append(op);
+        }
+        document.getElementById("btnCatalogoRecuperar").disabled=archivados.length===0;
+        avisarCatalogo(archivados.length+" productos archivados encontrados.");
+      }catch(e){
+        selector.replaceChildren();
+        document.getElementById("btnCatalogoRecuperar").disabled=true;
+        avisarCatalogo("No se pudo consultar el archivo. Reintenta.",true);
+      }finally{btn.disabled=false;}
+    }
+    async function recuperarProductoCatalogo(){
+      const selector=document.getElementById("catalogoArchivados");
+      const id=Number(selector.value);
+      if(!Number.isSafeInteger(id)||id<1){
+        avisarCatalogo("Selecciona primero un producto archivado.",true);
+        return;
+      }
+      const boton=document.getElementById("btnCatalogoRecuperar");
+      boton.disabled=true;
+      try{
+        await enviarCatalogo("/api/admin/catalogo/recuperar",{id});
+        avisarCatalogo("Producto recuperado como disponible, sin borrar historial.");
+        await consultarArchivadosCatalogo();
+      }catch(e){
+        avisarCatalogo("No se pudo recuperar: "+String(e.message||"ERROR"),true);
+      }finally{boton.disabled=false;}
+    }
     async function archivarProductoCatalogo(){
       const id=Number(document.getElementById("catalogoElegido").value);
       if(!id||!confirm("¿Archivar este producto? Se ocultará, pero su historial se conservará."))return;
@@ -442,6 +496,7 @@
       try{
         await enviarCatalogo("/api/admin/catalogo/archivar",{id});
         avisarCatalogo("Producto archivado. Historial conservado.");
+        void consultarArchivadosCatalogo();
       }catch(e){avisarCatalogo("No se pudo archivar: "+String(e.message||"ERROR"),true);}
       finally{seleccionarProductoCatalogo();}
     }

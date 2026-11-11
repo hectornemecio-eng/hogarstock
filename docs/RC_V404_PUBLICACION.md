@@ -8,7 +8,7 @@
 ## Funciones incluidas
 
 - Crear productos y editar nombre/categoría desde el panel administrativo.
-- Archivar productos sin eliminar físicamente las filas ni el historial.
+- Archivar y recuperar productos sin eliminar físicamente las filas ni el historial.
 - Evitar duplicados del catálogo activo.
 - Bloquear edición o archivo de productos asociados a compras abiertas.
 - Impedir reactivar productos archivados por rutas antiguas.
@@ -23,7 +23,8 @@ La configuración de seguridad de producción se conserva de `main`.
 
 ## Validación necesaria
 
-- [ ] GitHub Actions CI candidata: sintaxis, 31 regresiones e inexistencia de cambios de laboratorio.
+- [x] GitHub Actions CI candidata original: 31 regresiones superadas.
+- [ ] GitHub Actions CI de recuperación y regresiones completa.
 - [ ] Prueba práctica desde navegador **solo tras autorización de publicación**.
 - [ ] Verificación real del recorrido de compra y envío WhatsApp tras publicar.
 - [ ] Restauración completa desde respaldos, aplazada hasta recuperar USB.
@@ -37,7 +38,7 @@ La configuración de seguridad de producción se conserva de `main`.
   podría hacer que esos productos reaparecieran, porque esa versión no conoce
   el registro de archivado. Evitar reversiones improvisadas si ya se ha usado la
   nueva funcionalidad; definir plan específico para conservar la semántica.
-- El código actual no ofrece pantalla para restaurar un producto archivado.
+- La recuperación de archivados existe, pero bloquea nombres/categorías duplicados entre productos activos.
 - No hay disponibilidad 24/7 garantizada en Render Free ni garantías de
   continuidad para la integración no oficial con WhatsApp.
 

@@ -518,9 +518,10 @@ function errorCatalogo(res,error){
   if(["HS_CATALOGO_NOMBRE_INVALIDO","HS_CATALOGO_CATEGORIA_INVALIDO",
       "HS_CATALOGO_ID_INVALIDO"].includes(codigo))
     return res.status(400).json({error:codigo});
-  if(["HS_CATALOGO_DUPLICADO","HS_CATALOGO_COMPRA_ACTIVA"].includes(codigo))
+  if(["HS_CATALOGO_DUPLICADO","HS_CATALOGO_COMPRA_ACTIVA",
+      "HS_CATALOGO_CAMBIO_CONCURRENTE"].includes(codigo))
     return res.status(409).json({error:codigo});
-  if(codigo==="HS_CATALOGO_NO_ENCONTRADO")
+  if(["HS_CATALOGO_NO_ENCONTRADO","HS_CATALOGO_NO_ARCHIVADO"].includes(codigo))
     return res.status(404).json({error:codigo});
   console.error("HogarStock: operacion catalogo no confirmada.");
   return res.status(503).json({error:"HS_CATALOGO_ERROR"});
@@ -542,6 +543,17 @@ app.post("/api/admin/catalogo/editar",http.adminWrite,(req,res)=>
   ejecutarCambioCatalogo(res,()=>catalogo.editar(req.body)));
 app.post("/api/admin/catalogo/archivar",http.adminWrite,(req,res)=>
   ejecutarCambioCatalogo(res,()=>catalogo.archivar(req.body)));
+app.get("/api/admin/catalogo/archivados",http.admin,async(req,res)=>{
+  try{
+    res.setHeader("Cache-Control","no-store");
+    res.json(await catalogo.listarArchivados());
+  }catch(_){
+    console.error("HogarStock: consulta archivados no disponible.");
+    res.status(503).json({error:"HS_CATALOGO_ERROR"});
+  }
+});
+app.post("/api/admin/catalogo/recuperar",http.adminWrite,(req,res)=>
+  ejecutarCambioCatalogo(res,()=>catalogo.recuperar(req.body)));
 
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
