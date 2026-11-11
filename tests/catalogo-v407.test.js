@@ -69,7 +69,7 @@ test("v4.07: segunda ejecución no duplica ni reescribe registros",async()=>{
   });
 });
 test("v4.07: no modifica productos durante compra compartida abierta",async()=>{
-  await laboratorio(async({db,revision})=>{
+  await laboratorio(async({db,cat,revision})=>{
     await db.execute({sql:"INSERT INTO hs_v2_security_grants VALUES(?, 'abierta', ?)",
       args:["compra-ficticia",Date.now()+120000]});
     const producto=await db.execute("SELECT id FROM productos WHERE nombre='Yogurt grande'");
