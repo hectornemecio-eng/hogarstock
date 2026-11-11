@@ -14,6 +14,7 @@ async function laboratorio(fn){
   try{
     await db.execute("CREATE TABLE productos (id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,categoria TEXT NOT NULL,agotado INTEGER DEFAULT 0)");
     await db.execute("CREATE TABLE hs_v2_security_grants (compra_id TEXT PRIMARY KEY, estado TEXT, expira INTEGER)");
+    await db.execute("CREATE TABLE hs_v2_security_items (compra_id TEXT, producto_id INTEGER, estado TEXT)");
     const cat=crearGestionCatalogo({db});
     await cat.init();
     await db.batch(seed.map((p,i)=>({sql:"INSERT INTO productos (id,nombre,categoria,agotado) VALUES(?,?,?,?)",
@@ -71,8 +72,11 @@ test("v4.07: no modifica productos durante compra compartida abierta",async()=>{
   await laboratorio(async({db,revision})=>{
     await db.execute({sql:"INSERT INTO hs_v2_security_grants VALUES(?, 'abierta', ?)",
       args:["compra-ficticia",Date.now()+120000]});
+    const producto=await db.execute("SELECT id FROM productos WHERE nombre='Yogurt grande'");
+    await db.execute({sql:"INSERT INTO hs_v2_security_items VALUES(?,?,?)",
+      args:["compra-ficticia",producto.rows[0].id,"pendiente"]});
     const r=await revision.aplicar();
-    assert.deepEqual(r,{aplazado:true,razon:"COMPRA_ACTIVA"});
+    assert.deepEqual(r,{aplazado:true,razon:"PRODUCTO_EN_COMPRA_ACTIVA"});
     assert.equal(Number((await db.execute("SELECT count(*) n FROM productos")).rows[0].n),150);
     await db.execute("UPDATE hs_v2_security_grants SET estado='finalizada'");
     assert.equal((await revision.aplicar()).despues,161);
@@ -115,5 +119,20 @@ test("v4.07: productos archivados no se resucitan",async()=>{
     assert.equal(hecho.despues,160);
     assert.equal(Number((await db.execute("SELECT count(*) n FROM productos WHERE nombre='Yogurt griego grande'")).rows[0].n),0);
     assert.equal(Number((await db.execute("SELECT count(*) n FROM hs_catalogo_archivados")).rows[0].n),1);
+  });
+});
+
+test("v4.07: compra abierta de OTROS artículos no bloquea las modificaciones",async()=>{
+  await laboratorio(async({db,revision})=>{
+    await db.execute({sql:"INSERT INTO hs_v2_security_grants VALUES(?, 'abierta', ?)",
+      args:["compra-distinta",Date.now()+120000]});
+    const otro=await db.execute("SELECT id FROM productos WHERE nombre='Aguacates'");
+    await db.execute({sql:"INSERT INTO hs_v2_security_items VALUES(?,?,?)",
+      args:["compra-distinta",otro.rows[0].id,"pendiente"]});
+    const r=await revision.aplicar();
+    assert.equal(r.aplicado,true);
+    assert.equal(r.despues,161);
+    const i=await db.execute("SELECT count(*) AS n FROM hs_v2_security_items");
+    assert.equal(Number(i.rows[0].n),1);
   });
 });

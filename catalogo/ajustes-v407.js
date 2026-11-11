@@ -41,13 +41,18 @@ function crearRevisionCatalogo({db,reloj=Date.now}={}){
         return {yaAplicado:true,antes:Number(registro.rows[0].antes),
           despues:Number(registro.rows[0].despues)};
       }
-      // No cambiar el significado de elementos incluidos en una compra activa.
-      const activa=await tx.execute({sql:
-        "SELECT 1 FROM hs_v2_security_grants WHERE estado='abierta' AND expira>? LIMIT 1",
-        args:[reloj()]});
-      if(activa.rows.length){
+      // Restringir la protección a productos que se VAN A RENOMBRAR.
+      // Otras compras abiertas no deben bloquear altas independientes disponibles.
+      const condiciones=SPLITS.map(()=> "lower(p.nombre)=lower(?)").join(" OR ");
+      const afectada=await tx.execute({sql:
+        "SELECT 1 FROM hs_v2_security_items i "+
+        "JOIN hs_v2_security_grants g ON g.compra_id=i.compra_id "+
+        "JOIN productos p ON p.id=i.producto_id "+
+        "WHERE g.estado='abierta' AND g.expira>? AND ("+condiciones+") LIMIT 1",
+        args:[reloj(),...SPLITS.map(x=>x.origen)]});
+      if(afectada.rows.length){
         await tx.rollback();
-        return {aplazado:true,razon:"COMPRA_ACTIVA"};
+        return {aplazado:true,razon:"PRODUCTO_EN_COMPRA_ACTIVA"};
       }
       const antes=Number((await tx.execute("SELECT COUNT(*) AS n FROM productos")).rows[0].n);
       const detalles=[];
