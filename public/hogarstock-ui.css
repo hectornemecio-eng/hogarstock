@@ -568,3 +568,54 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 .catalog-panel form button{margin-top:.6rem}
 .catalog-panel #btnCatalogoArchivar{margin-left:.4rem}
 .catalog-panel #catalogoEstado:not(:empty){margin-top:.6rem}
+
+
+/* v4.06: coherencia visual del panel funcional, sin navegación ficticia */
+.page-admin .metric{display:flex;align-items:center;gap:13px;min-height:93px;
+  border-radius:18px;box-shadow:0 8px 25px rgba(15,60,41,.055)}
+.page-admin .metric-symbol{display:grid;place-items:center;flex:none;width:44px;height:44px;
+  border-radius:12px;background:#e8f7ef;color:#14694e;font-size:1.25rem}
+.page-admin .metric:nth-child(2) .metric-symbol{background:#fff2dc}
+.page-admin .metric:nth-child(3) .metric-symbol{font-size:1.4rem;font-weight:900}
+.page-admin .metric-copy{min-width:0}
+.page-admin .metric-number{font-size:1.8rem}
+.page-admin .category-block{box-shadow:0 8px 24px rgba(16,61,43,.055)}
+.page-admin .category-header{min-height:65px;padding:12px 17px}
+.page-admin .category-heading{flex:1;min-width:0}
+.page-admin .category-label{min-width:0;overflow-wrap:anywhere;line-height:1.25}
+.page-admin .category-glyph{width:42px;height:42px;border-radius:12px;font-size:1.24rem}
+.page-admin .category-glyph.tone-fruit{background:#fff0eb}
+.page-admin .category-glyph.tone-vegetable{background:#eaf8e7}
+.page-admin .category-glyph.tone-protein{background:#e9f3ff}
+.page-admin .category-glyph.tone-dairy{background:#fff8e6}
+.page-admin .category-glyph.tone-pantry{background:#f7f0e2}
+.page-admin .category-glyph.tone-breakfast{background:#fff3e8}
+.page-admin .category-glyph.tone-cleaning{background:#e8f6ff}
+.page-admin .category-glyph.tone-paper{background:#f3f0fa}
+.page-admin .category-glyph.tone-hygiene{background:#e4f7f2}
+.page-admin .category-glyph.tone-beauty{background:#fff0f3}
+.page-admin .category-total{background:#e8f4eb;color:#1d6045;border-color:#e0ece4;font-weight:800}
+.page-admin .inventory-total{margin:14px 1px 0;padding-top:12px;border-top:1px solid var(--line);
+  font-size:.76rem;color:var(--muted);font-weight:680}
+.page-admin .catalog-panel select{display:block;width:100%;min-height:44px;padding:9px 11px;
+  border:1px solid #cddad0;background:#fff;color:var(--ink);border-radius:9px;
+  font:inherit;font-size:.86rem}
+.page-buyer .buyer-category-icon{display:inline-grid;place-items:center;min-width:27px;font-size:1.07rem}
+@media(max-width:650px){
+  .page-admin .metrics{gap:7px}
+  .page-admin .metric{gap:6px;padding:10px 8px;min-height:85px;flex-direction:column;align-items:flex-start}
+  .page-admin .metric-symbol{width:31px;height:31px;border-radius:9px;font-size:1rem}
+  .page-admin .metric:nth-child(3) .metric-symbol{font-size:1rem}
+  .page-admin .metric-number{font-size:1.36rem;margin-top:2px}
+  .page-admin .metric-label{font-size:.66rem}
+  .page-admin .category-header{min-height:62px;padding:10px 11px}
+  .page-admin .category-glyph{width:35px;height:35px;font-size:1.07rem}
+  .page-admin .category-heading{gap:7px}
+  .page-admin .category-label{font-size:.83rem}
+  .page-admin .category-end{gap:2px}
+  .page-admin .category-pending{font-size:.64rem;padding:3px 5px}
+}
+@media(max-width:380px){
+  .page-admin .category-pending{display:none}
+  .page-admin .category-total{padding:2px 6px;font-size:.69rem}
+}

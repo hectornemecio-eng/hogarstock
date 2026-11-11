@@ -24,9 +24,9 @@
         <p class="intro-desc">Controla lo que falta y comparte una sola lista actualizada con las personas de confianza.</p>
       </header>
       <section class="metrics" aria-label="Resumen del inventario">
-        <div class="metric"><span class="metric-label">Productos</span><strong id="metricTotal" class="metric-number">—</strong></div>
-        <div class="metric"><span class="metric-label">Por comprar</span><strong id="metricPending" class="metric-number">—</strong></div>
-        <div class="metric"><span class="metric-label">Disponibles</span><strong id="metricAvailable" class="metric-number">—</strong></div>
+        <div class="metric"><span class="metric-symbol" aria-hidden="true">📦</span><span class="metric-copy"><span class="metric-label">Productos</span><strong id="metricTotal" class="metric-number">—</strong></span></div>
+        <div class="metric"><span class="metric-symbol" aria-hidden="true">🛒</span><span class="metric-copy"><span class="metric-label">Por comprar</span><strong id="metricPending" class="metric-number">—</strong></span></div>
+        <div class="metric"><span class="metric-symbol" aria-hidden="true">✓</span><span class="metric-copy"><span class="metric-label">Disponibles</span><strong id="metricAvailable" class="metric-number">—</strong></span></div>
       </section>
       <div class="inventory-toolbar">
         <div><h2 class="section-title">Tus productos</h2><p class="section-subtitle">Organizados por categoría</p></div>
@@ -40,6 +40,7 @@
       </div>
       <div id="lista" aria-live="polite"><p class="empty-result">Cargando inventario...</p></div>
       <p class="inventory-help">Selecciona los productos que necesitas comprar. Puedes modificarlos durante una compra compartida.</p>
+      <p id="inventoryTotal" class="inventory-total" aria-live="polite"></p>
     </main>
     <aside class="sidebar" aria-label="Compartir lista de compra">
       <section id="compraPanel" class="shared-purchase" aria-label="Compra compartida actual">
@@ -95,8 +96,19 @@
           <label for="nuevoProductoNombre">Nombre del producto</label>
           <input id="nuevoProductoNombre" type="text" maxlength="120" required>
           <label for="nuevaCategoria">Categoría</label>
-          <input id="nuevaCategoria" type="text" maxlength="60" required list="categoriasCatalogo">
-          <datalist id="categoriasCatalogo"></datalist>
+          <select id="nuevaCategoria" required>
+            <option value="">Selecciona una categoría</option>
+            <option value="Frutas">Frutas</option>
+            <option value="Verduras y tubérculos">Verduras y tubérculos</option>
+            <option value="Carnes, pescados y embutidos">Carnes, pescados y embutidos</option>
+            <option value="Lácteos y huevos">Lácteos y huevos</option>
+            <option value="Despensa y cocina">Despensa y cocina</option>
+            <option value="Desayunos, snacks y bebidas">Desayunos, snacks y bebidas</option>
+            <option value="Limpieza y lavandería">Limpieza y lavandería</option>
+            <option value="Papel y artículos del hogar">Papel y artículos del hogar</option>
+            <option value="Higiene personal">Higiene personal</option>
+            <option value="Cosmética y belleza">Cosmética y belleza</option>
+          </select>
           <button type="submit" id="btnCatalogoAlta">Añadir producto</button>
         </form>
         <form id="formCatalogoEditar" onsubmit="editarProductoCatalogo(event)">
@@ -106,7 +118,19 @@
           <label for="catalogoNombreEdit">Nombre</label>
           <input id="catalogoNombreEdit" type="text" maxlength="120" required>
           <label for="catalogoCategoriaEdit">Categoría</label>
-          <input id="catalogoCategoriaEdit" type="text" maxlength="60" required list="categoriasCatalogo">
+          <select id="catalogoCategoriaEdit" required>
+            <option value="">Selecciona una categoría</option>
+            <option value="Frutas">Frutas</option>
+            <option value="Verduras y tubérculos">Verduras y tubérculos</option>
+            <option value="Carnes, pescados y embutidos">Carnes, pescados y embutidos</option>
+            <option value="Lácteos y huevos">Lácteos y huevos</option>
+            <option value="Despensa y cocina">Despensa y cocina</option>
+            <option value="Desayunos, snacks y bebidas">Desayunos, snacks y bebidas</option>
+            <option value="Limpieza y lavandería">Limpieza y lavandería</option>
+            <option value="Papel y artículos del hogar">Papel y artículos del hogar</option>
+            <option value="Higiene personal">Higiene personal</option>
+            <option value="Cosmética y belleza">Cosmética y belleza</option>
+          </select>
           <button type="submit" id="btnCatalogoEditar">Guardar cambios</button>
           <button type="button" id="btnCatalogoArchivar" onclick="archivarProductoCatalogo()">Archivar producto</button>
         </form>
@@ -378,7 +402,14 @@
       const id=Number(document.getElementById("catalogoElegido").value);
       const p=allProductos.find(x=>Number(x.id)===id);
       document.getElementById("catalogoNombreEdit").value=p?p.nombre:"";
-      document.getElementById("catalogoCategoriaEdit").value=p?p.categoria:"";
+      const selector=document.getElementById("catalogoCategoriaEdit");
+      selector.querySelectorAll("option[data-extra]").forEach(x=>x.remove());
+      if(p&&!Array.from(selector.options).some(x=>x.value===p.categoria)){
+        const opt=document.createElement("option");
+        opt.value=p.categoria;opt.textContent=p.categoria+" (personalizada)";
+        opt.dataset.extra="1";selector.append(opt);
+      }
+      selector.value=p?p.categoria:"";
       document.getElementById("btnCatalogoEditar").disabled=!p;
       document.getElementById("btnCatalogoArchivar").disabled=!p;
     }
@@ -396,13 +427,6 @@
         el.append(opt);
       }
       el.value=allProductos.some(p=>String(p.id)===previo)?previo:"";
-      const categorias=document.getElementById("categoriasCatalogo");
-      categorias.replaceChildren();
-      for(const c of [...new Set(allProductos.map(p=>p.categoria))].sort()){
-        const opt=document.createElement("option");
-        opt.value=c;
-        categorias.append(opt);
-      }
       seleccionarProductoCatalogo();
     }
     async function enviarCatalogo(url,datos){
@@ -508,6 +532,8 @@
       document.getElementById("metricTotal").textContent=String(total);
       document.getElementById("metricPending").textContent=String(pendientes);
       document.getElementById("metricAvailable").textContent=String(total-pendientes);
+      document.getElementById("inventoryTotal").textContent=
+        "Total: "+total+" productos · "+new Set(allProductos.map(p=>p.categoria)).size+" categorías";
     }
     let categoriaAbierta = null; // Acordeón: una sola categoría abierta.
     let revisionAjusteCategoria = 0; // Evitar desplazamientos obsoletos.
@@ -557,15 +583,10 @@
       actual.onerror = () => actual.close();
       actual.onclose = () => programarReconexionWS();
     }
-    function iconoCategoria(nombre){
-      const c=String(nombre).toLocaleLowerCase("es");
-      if(/carne|pescad/.test(c))return "🐟";
-      if(/fruta|verdura/.test(c))return "🥬";
-      if(/lácteo|lacteo|huevo/.test(c))return "🥛";
-      if(/despensa|aliment/.test(c))return "◈";
-      if(/limpieza|higiene/.test(c))return "✧";
-      return "▦";
-    }
+    const ICONOS_CATEGORIAS={"Frutas":"🍎","Verduras y tubérculos":"🥦","Carnes, pescados y embutidos":"🐟","Lácteos y huevos":"🥛","Despensa y cocina":"🫙","Desayunos, snacks y bebidas":"☕","Limpieza y lavandería":"🧹","Papel y artículos del hogar":"🧻","Higiene personal":"🧼","Cosmética y belleza":"💄"};
+    const TONOS_CATEGORIAS={"Frutas":"fruit","Verduras y tubérculos":"vegetable","Carnes, pescados y embutidos":"protein","Lácteos y huevos":"dairy","Despensa y cocina":"pantry","Desayunos, snacks y bebidas":"breakfast","Limpieza y lavandería":"cleaning","Papel y artículos del hogar":"paper","Higiene personal":"hygiene","Cosmética y belleza":"beauty"};
+    function iconoCategoria(nombre){return ICONOS_CATEGORIAS[nombre]||"📦";}
+    function tonoCategoria(nombre){return TONOS_CATEGORIAS[nombre]||"other";}
     function setTel(num) { document.getElementById("telefono").value = num; }
     function toggleCategoria(cat) {
       categoriaAbierta = categoriaAbierta === cat ? null : cat;
@@ -682,7 +703,7 @@
         // Los productos pendientes no fuerzan la apertura de otra categoría.
         const estaAbierta = isSearching || categoriaAbierta === cat;
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
-        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" data-categoria="${escapar(cat)}" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph" aria-hidden="true">${iconoCategoria(cat)}</span><span>${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
+        html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" data-categoria="${escapar(cat)}" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph tone-${tonoCategoria(cat)}" aria-hidden="true">${iconoCategoria(cat)}</span><span class="category-label">${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
           html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button>`;
         });
