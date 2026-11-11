@@ -1,0 +1,42 @@
+name: HogarStock v4.04 - laboratorio Windows descargable
+on:
+  push:
+    branches: [feat-gestion-catalogo-v404-2026-11-11]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paquete:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Dependencias Windows
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pruebas previas
+        run: node --test tests/*.test.js
+      - name: Probar servidor HTTP y SQLite locales
+        run: node lab/start-local-v404.js --smoke-test
+      - name: Preparar copia con dependencias Windows
+        shell: pwsh
+        run: |
+          if(Test-Path .env){throw "Se detecto .env"}
+          $dest=Join-Path $PWD 'dist/HogarStock_v404_LAB_WINDOWS'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          @('server.js','db.js','package.json','package-lock.json',
+            'public','security','catalogo','whatsapp','backup','lab',
+            'node_modules','INICIAR_LAB_HOGARSTOCK.cmd','LEEME_LAB_WINDOWS.md') |
+            ForEach-Object {Copy-Item -LiteralPath $_ -Destination $dest -Recurse -Force}
+          if(Test-Path (Join-Path $dest '.env')){throw "Env prohibido en paquete"}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HogarStock_v404_LAB_WINDOWS
+          path: dist/HogarStock_v404_LAB_WINDOWS/
+          if-no-files-found: error
+          retention-days: 14
