@@ -2,6 +2,7 @@
 // v4.07: ajuste transaccional e idempotente del catálogo solicitado por el propietario.
 // Nunca modifica claves WhatsApp, productos archivados ni compras en curso.
 const VERSION="catalogo_v407_20261111";
+const ETAPA=VERSION+"_altas";
 const AUDIT="hs_catalogo_revision_v407";
 const SPLITS=Object.freeze([
   {origen:"Panecillos mercadona e integral",
@@ -41,19 +42,6 @@ function crearRevisionCatalogo({db,reloj=Date.now}={}){
         return {yaAplicado:true,antes:Number(registro.rows[0].antes),
           despues:Number(registro.rows[0].despues)};
       }
-      // Restringir la protección a productos que se VAN A RENOMBRAR.
-      // Otras compras abiertas no deben bloquear altas independientes disponibles.
-      const condiciones=SPLITS.map(()=> "lower(p.nombre)=lower(?)").join(" OR ");
-      const afectada=await tx.execute({sql:
-        "SELECT 1 FROM hs_v2_security_items i "+
-        "JOIN hs_v2_security_grants g ON g.compra_id=i.compra_id "+
-        "JOIN productos p ON p.id=i.producto_id "+
-        "WHERE g.estado='abierta' AND g.expira>? AND ("+condiciones+") LIMIT 1",
-        args:[reloj(),...SPLITS.map(x=>x.origen)]});
-      if(afectada.rows.length){
-        await tx.rollback();
-        return {aplazado:true,razon:"PRODUCTO_EN_COMPRA_ACTIVA"};
-      }
       const antes=Number((await tx.execute("SELECT COUNT(*) AS n FROM productos")).rows[0].n);
       const detalles=[];
       let renombrados=0,creados=0;
@@ -76,6 +64,53 @@ function crearRevisionCatalogo({db,reloj=Date.now}={}){
         creados++;
         return {id:Number(r.lastInsertRowid),creado:true};
       }
+      // Una compra existente conserva sus nombres. No tocamos sus productos:
+      // incorporamos las once variantes/altas y diferimos solo cuatro renombrados.
+      const condiciones=SPLITS.map(()=> "lower(p.nombre)=lower(?)").join(" OR ");
+      const afectada=await tx.execute({sql:
+        "SELECT 1 FROM hs_v2_security_items i "+
+        "JOIN hs_v2_security_grants g ON g.compra_id=i.compra_id "+
+        "JOIN productos p ON p.id=i.producto_id "+
+        "WHERE g.estado='abierta' AND g.expira>? AND ("+condiciones+") LIMIT 1",
+        args:[reloj(),...SPLITS.map(x=>x.origen)]});
+      if(afectada.rows.length){
+        const etapa=await tx.execute({sql:
+          "SELECT antes,despues FROM "+AUDIT+" WHERE version=? LIMIT 1",args:[ETAPA]});
+        if(etapa.rows.length){
+          await tx.rollback();
+          return {aplazado:true,razon:"RENOMBRES_DIFERIDOS",
+            altasAplicadas:true,etapaAplicada:false,
+            antes:Number(etapa.rows[0].antes),despues:Number(etapa.rows[0].despues)};
+        }
+        for(const cambio of SPLITS){
+          const original=await activo(cambio.origen);
+          if(!original){
+            detalles.push({tipo:"origen_ausente",nombre:cambio.origen});
+            continue;
+          }
+          const principal=await activo(cambio.destinos[0]);
+          if(principal && Number(principal.id)!==Number(original.id))
+            throw Error("HS_CATALOGO_V407_CONFLICTO_RENOMBRE");
+          const a=await insertar(cambio.destinos[1],String(original.categoria));
+          detalles.push({tipo:a.creado?"alta_adicional":"ya_existia",
+            id:a.id,nombre:cambio.destinos[1]});
+        }
+        for(const nuevo of NUEVOS){
+          const a=await insertar(nuevo.nombre,nuevo.categoria);
+          detalles.push({tipo:a.creado?"alta":"ya_existia",id:a.id,
+            nombre:nuevo.nombre,categoria:nuevo.categoria});
+        }
+        const despuesParcial=Number((await tx.execute(
+          "SELECT COUNT(*) AS n FROM productos")).rows[0].n);
+        await tx.execute({sql:"INSERT INTO "+AUDIT+
+          "(version,fecha,antes,despues,detalle) VALUES(?,?,?,?,?)",
+          args:[ETAPA,reloj(),antes,despuesParcial,JSON.stringify(detalles)]});
+        await tx.commit();
+        return {aplazado:true,razon:"RENOMBRES_DIFERIDOS",
+          altasAplicadas:true,etapaAplicada:true,antes,
+          despues:despuesParcial,creados};
+      }
+
       for(const cambio of SPLITS){
         const original=await activo(cambio.origen);
         if(!original){
@@ -117,4 +152,4 @@ function crearRevisionCatalogo({db,reloj=Date.now}={}){
   }
   return Object.freeze({init,aplicar});
 }
-module.exports={crearRevisionCatalogo,VERSION,SPLITS,NUEVOS};
+module.exports={crearRevisionCatalogo,VERSION,ETAPA,SPLITS,NUEVOS};
