@@ -39,3 +39,12 @@ Criterio de uso: el indicador de conexión muestra solo estado del socket; **no*
 - **No se introducen reintentos automáticos de escrituras**, reparaciones de claves, borrados o revinculaciones: el origen exacto de los errores de Baileys no está demostrado. Cuando se despliegue v4.05, los indicadores permitirán distinguir si falló el adaptador libSQL.
 - Los ensayos simulan fallos en operaciones cifradas y verifican que un diagnóstico no cambia el resultado de la operación ni revela datos sensibles.
 - Las 44 comprobaciones superadas anteriormente no demuestran la salud de las claves Signal ni resuelven por sí solas los fallos de inicialización. Este bloque agrega instrumentos para diagnóstico.
+
+## Cuarto bloque: incompatibilidad comprobada de pre-keys (causa técnica identificada)
+- La versión exacta de Baileys fijada en `package.json`, `7.0.0-rc12`, define `INITIAL_PREKEY_COUNT=812`. Fuente comprobada: etiqueta `v7.0.0-rc12`, fichero `src/Defaults/index.ts`.
+- Su `src/Socket/socket.ts` solicita 812 cuando el servidor de WhatsApp informa que dispone de 0 pre-keys; `src/Utils/signal.ts` envía las claves en un mismo `keys.set({'pre-key': newPreKeys})` y posteriormente lee el conjunto.
+- El adaptador actual de HogarStock fija `MAX_BATCH=300` tanto para `keys.set` como para `keys.get`; por tanto, la solicitud de 812 es **rechazada sistemáticamente** con `HS_WA_AUTH_LOTE_EXCESIVO` (y la lectura posterior también se rechazaría).
+- Corrección mínima: `MAX_BATCH=900`, sin alterar la tabla, los algoritmos de cifrado, las claves ni la semántica transaccional; permitir una sola transacción completa en vez de fraccionar el lote de pre-keys.
+- Regresión aislada de 812 claves cifradas con lease y lectura de 812 IDs; rechazo atómico de 901 claves.
+- Certeza alta: incompatibilidad demostrada en código. Certeza no absoluta: aún no se puede asegurar que TODAS las incidencias actuales de Baileys se deban a ese límite. La prueba en SQLite aislado no equivale a haber ejecutado el mismo lote en Turso HTTP real ni permite garantizar la recuperación de claves ausentes.
+- Sin cambio a producción, sin WhatsApp real, sin eliminación de registros.

@@ -5,7 +5,10 @@ const crypto = require("node:crypto");
 const TABLE = "hs_v2_wa_auth_encrypted";
 const MAX_KEY_ID = 512;
 const MAX_RECORD_BYTES = 1024 * 1024;
-const MAX_BATCH = 300;
+// Baileys v7.0.0-rc12 genera 812 pre-keys cuando el servidor tiene 0.
+// Mantener el lote completo y transaccional (sin particiones parcialmente confirmadas).
+// 900 permite el lote inicial y deja un margen limitado; no es un límite sin control.
+const MAX_BATCH = 900;
 
 function crearAuthTurso({db, claveHex, baileys, reloj = Date.now,
   permitirAltaNueva = false, lease = null, monitor = null} = {}) {
