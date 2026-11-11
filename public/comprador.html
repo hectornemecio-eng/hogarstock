@@ -122,10 +122,8 @@
           const nombre=document.createElement("span");nombre.className="buyer-category-name";
           const linea=document.createElement("span");linea.className="buyer-category-rule";
           const total=document.createElement("span");total.className="buyer-category-total";
-          const c=String(p.categoria).toLocaleLowerCase("es");
-          icon.textContent=/carne|pescad/.test(c)?"🐟":
-            /fruta|verdura/.test(c)?"🥬":/lácteo|lacteo|huevo/.test(c)?"🥛":
-            /despensa/.test(c)?"◈":"▦";
+          const iconos={"Frutas":"🍎","Verduras y tubérculos":"🥦","Carnes, pescados y embutidos":"🐟","Lácteos y huevos":"🥛","Despensa y cocina":"🫙","Desayunos, snacks y bebidas":"☕","Limpieza y lavandería":"🧹","Papel y artículos del hogar":"🧻","Higiene personal":"🧼","Cosmética y belleza":"💄"};
+          icon.textContent=iconos[p.categoria]||"📦";
           icon.setAttribute("aria-hidden","true");
           nombre.textContent=p.categoria;
           total.textContent=String(visibles.filter(x=>x.categoria===p.categoria).length)+" productos";

@@ -35,7 +35,10 @@ test("v4.04: alta, edicion, deteccion duplicados y validacion estricta",async()=
     await catalogo.editar({id:primero.id,nombre:"Leche",categoria:"Despensa"});
     const p=(await catalogo.listar())[0];
     assert.equal(p.nombre,"Leche");
-    assert.equal(p.categoria,"Despensa");
+    // API v4.06: etiqueta visible nueva; dato original preservado para rollback.
+    assert.equal(p.categoria,"Despensa y cocina");
+    const persistida=await db.execute({sql:"SELECT categoria FROM productos WHERE id=?",args:[p.id]});
+    assert.equal(String(persistida.rows[0].categoria),"Despensa");
     assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM productos")).rows[0].n),1);
   });
 });
