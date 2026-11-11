@@ -621,8 +621,11 @@
         document.getElementById("btnRevincularWA").style.display =
           data.requiereRevinculacion ? "block" : "none";
         if (data.conectado) {
-          el.className = "wa-status wa-on";
-          el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
+          const reconexiones=data.diagnostico?.inestable===true;
+          el.className = "wa-status "+(reconexiones?"wa-off":"wa-on");
+          el.innerHTML = reconexiones
+            ? '<div class="dot"></div> WhatsApp: Conectado, con reconexiones recientes ⚠️'
+            : '<div class="dot"></div> WhatsApp: Conectado ✅';
           modal.style.display = "none";
           ultimoQR = null;
           document.getElementById("qrcode").replaceChildren();

@@ -23,3 +23,12 @@ No se envían WhatsApps reales. No se toca Turso real, Render ni `main`.
 - CI en la solicitud de cambios, sin uso del PC local.
 - No fusionar hasta revisar el resultado y obtener autorización de publicación.
 - Siguientes frentes: errores de pre-keys de Baileys y recuperación real aislada.
+
+## Segundo bloque: estabilidad WA y continuidad
+- Diagnóstico agregado de desconexiones sin datos personales ni claves, accesible exclusivamente al administrador autenticado.
+- Tras dos cierres 500 en los últimos 30 minutos, el panel avisa **conectado con reconexiones recientes**. Esto no prueba fallo en entregas ni el estado de pre-keys; los errores internos de Baileys observados en Render necesitan seguimiento.
+- Retroceso progresivo de reconexión: una apertura fugaz no restablece el contador, pero una sesión mantenida 2 minutos sí. No se borra sesión, no hay cambios en claves ni en el proveedor.
+- Prueba adicional de copia/restauración aislada con tabla de archivados y estados de envío pendientes; sin conexión con Turso real.
+- Todos los ensayos usan datos ficticios en GitHub Actions; la versión v4.04 en producción sigue intacta.
+
+Criterio de uso: el indicador de conexión muestra solo estado del socket; **no** acredita la entrega de mensajes ni confirma la sincronización de todas las claves Signal. No revincular por un código 500: un 401 exige diagnóstico independiente.

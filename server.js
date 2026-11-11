@@ -15,6 +15,7 @@ const {crearAuthTurso}=require("./whatsapp/wa-auth-turso");
 const {crearLeaseWa}=require("./whatsapp/wa-lease");
 const {permitirVinculacionNueva}=require("./whatsapp/wa-pairing-policy");
 const {prepararNuevaVinculacion}=require("./whatsapp/wa-relink");
+const {crearEstabilidadWA}=require("./whatsapp/wa-stability");
 
 let makeWASocket;
 let initAuthCreds;
@@ -119,6 +120,7 @@ let waLeasePerdido = false;
 let waLeaseRenovando = false;
 let waResetInProgress = false;
 let waCredencialesPendientes = Promise.resolve();
+const estabilidadWA=crearEstabilidadWA();
 
 function bloquearPorPerdidaDeLease() {
   if (waLeasePerdido) return;
@@ -285,11 +287,12 @@ async function iniciarWhatsApp() {
       }
 
       if (connection === "open") {
+        estabilidadWA.abierta();
         whatsappConectado = true;
         qrActual = null;
         errorWhatsApp = null;
-        intentosFallidos = 0;
-
+        // No reiniciar el retroceso por una apertura fugaz seguida de error 500.
+        // Se reinicia cuando una conexión previa se mantuvo estable.
         console.log("WhatsApp conectado.");
         anunciarEstado();
         return;
@@ -303,6 +306,7 @@ async function iniciarWhatsApp() {
 
         const codigo =
           lastDisconnect?.error?.output?.statusCode;
+        if(estabilidadWA.cerrada(codigo).estable)intentosFallidos=0;
 
         errorWhatsApp =
           `Conexion cerrada (codigo ${codigo ?? "desconocido"})`;
@@ -558,6 +562,7 @@ app.post("/api/admin/catalogo/recuperar",http.adminWrite,(req,res)=>
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
   res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
+    diagnostico:estabilidadWA.estado({conectado:whatsappConectado}),
     requiereRevinculacion:!whatsappConectado && !sock &&
       typeof errorWhatsApp==="string" && errorWhatsApp.includes("codigo 401")});
 });
