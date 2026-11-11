@@ -95,6 +95,9 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
         await tx.execute({sql:`INSERT INTO ${ITEMS}(compra_id,producto_id,estado)`+
           ` VALUES(?,?,'pendiente')`,args:[id,Number(item.id)]});
       }
+      // Marcar antes del envío: un reinicio no debe inventar que llegó la invitación.
+      await tx.execute({sql:`INSERT INTO ${ENVIOS}(compra_id,telefono,enviado) VALUES(?,?,0)`,
+        args:[id,numero]});
       return Object.freeze({compraId:id,token:grant.token,numero, cantidad:r.rows.length,
         nombres:r.rows.map(x=>String(x.nombre)),exp:grant.exp});
     });
@@ -127,31 +130,54 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       nombres:items.rows.map(x=>String(x.nombre)),exp:grant.exp,nueva:false
     });
   }
-  async function yaEnviado({compraId,telefono}={}) {
+  function idCompraValido(compraId) {
+    if(typeof compraId!=="string"||!/^[a-f0-9]{48}$/.test(compraId))
+      throw Error("HS_V2_COMPRA_ID_INVALIDO");
+  }
+  // confirmado: el proveedor aceptó el envío (no prueba lectura ni entrega);
+  // incierto: intento pendiente, envío interrumpido o primer contacto heredado.
+  async function estadoEnvio({compraId,telefono}={}) {
     exigirInit();
+    idCompraValido(compraId);
     const numero=validarContacto(telefono,permitidos);
-    const r=await db.execute({
-      sql:`SELECT 1 AS existe FROM ${CAB} WHERE compra_id=? AND telefono=?
-        UNION SELECT 1 AS existe FROM ${ENVIOS} WHERE compra_id=? AND telefono=?
-        LIMIT 1`,
-      args:[compraId,numero,compraId,numero]
-    });
-    return r.rows.length>0;
+    const r=await db.execute({sql:`SELECT enviado FROM ${ENVIOS}
+      WHERE compra_id=? AND telefono=? LIMIT 1`,args:[compraId,numero]});
+    if(r.rows.length) return Number(r.rows[0].enviado)>0?"confirmado":"incierto";
+    const original=await db.execute({sql:`SELECT 1 AS existe FROM ${CAB}
+      WHERE compra_id=? AND telefono=? LIMIT 1`,args:[compraId,numero]});
+    // Antes de v4.05 no se persistía el resultado del primer destinatario:
+    // no inferir nunca que se entregó ni repetirlo silenciosamente.
+    return original.rows.length?"incierto":"nuevo";
+  }
+  async function yaEnviado(args={}) {
+    return (await estadoEnvio(args))==="confirmado";
+  }
+  // Estado persistente previo a cualquier intento sobre un nuevo destinatario.
+  async function prepararIntentoEnvio({compraId,telefono}={}) {
+    exigirInit();
+    idCompraValido(compraId);
+    const numero=validarContacto(telefono,permitidos);
+    const r=await db.execute({sql:`INSERT INTO ${ENVIOS}(compra_id,telefono,enviado)
+      SELECT ?,?,0 WHERE EXISTS(SELECT 1 FROM ${CAB}
+      WHERE compra_id=? AND estado='abierta' AND expira>?)
+      ON CONFLICT(compra_id,telefono) DO NOTHING`,
+      args:[compraId,numero,compraId,reloj()]});
+    if(Number(r.rowsAffected)!==1){
+      const estado=await estadoEnvio({compraId,telefono:numero});
+      if(estado==="nuevo")throw Error("HS_V2_COMPRA_CERRADA_O_EXPIRADA");
+    }
+    return true;
   }
   async function registrarEnviado({compraId,telefono}={}) {
     exigirInit();
+    idCompraValido(compraId);
     const numero=validarContacto(telefono,permitidos);
-    if(typeof compraId!=="string"||!/^[a-f0-9]{48}$/.test(compraId))
-      throw Error("HS_V2_COMPRA_ID_INVALIDO");
-    const r=await db.execute({
-      sql:`INSERT INTO ${ENVIOS}(compra_id,telefono,enviado)
-        SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM ${CAB}
-        WHERE compra_id=? AND estado='abierta' AND expira>?)
-        ON CONFLICT(compra_id,telefono) DO NOTHING`,
-      args:[compraId,numero,reloj(),compraId,reloj()]
-    });
-    if(Number(r.rowsAffected)!==1 && !(await yaEnviado({compraId,telefono:numero})))
-      throw Error("HS_V2_COMPRA_CERRADA_O_EXPIRADA");
+    const r=await db.execute({sql:`INSERT INTO ${ENVIOS}(compra_id,telefono,enviado)
+      SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM ${CAB}
+      WHERE compra_id=? AND estado='abierta' AND expira>?)
+      ON CONFLICT(compra_id,telefono) DO UPDATE SET enviado=excluded.enviado`,
+      args:[compraId,numero,Math.max(1,reloj()),compraId,reloj()]});
+    if(Number(r.rowsAffected)!==1)throw Error("HS_V2_COMPRA_CERRADA_O_EXPIRADA");
     return true;
   }
   async function validarVigencia(tx,grant) {
@@ -328,6 +354,6 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       args:[compraId]});
     return Number(r.rowsAffected)===1;
   }
-  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta,alternarProducto,estadoCompra,finalizarAdmin});
+  return Object.freeze({init,crearCompra,prepararEnvio,validarDestinatarios,listarContactos,yaEnviado,estadoEnvio,prepararIntentoEnvio,registrarEnviado,listar,marcar,finalizar,revocar,hayCompraAbierta,alternarProducto,estadoCompra,finalizarAdmin});
 }
 module.exports={crearGrantsV2};

@@ -621,8 +621,14 @@
         document.getElementById("btnRevincularWA").style.display =
           data.requiereRevinculacion ? "block" : "none";
         if (data.conectado) {
-          el.className = "wa-status wa-on";
-          el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
+          const reconexiones=data.diagnostico?.inestable===true;
+          const fallosAlmacen=Number(data.persistencia?.fallosRecientes||0)>0;
+          el.className = "wa-status "+((reconexiones||fallosAlmacen)?"wa-off":"wa-on");
+          el.innerHTML = fallosAlmacen
+            ? '<div class="dot"></div> WhatsApp: Conectado; errores recientes al almacenar claves ⚠️'
+            : reconexiones
+              ? '<div class="dot"></div> WhatsApp: Conectado, con reconexiones recientes ⚠️'
+              : '<div class="dot"></div> WhatsApp: Conectado ✅';
           modal.style.display = "none";
           ultimoQR = null;
           document.getElementById("qrcode").replaceChildren();
@@ -804,8 +810,12 @@
           document.getElementById("permitirReenvio").checked=false;
         }else{
           est.className="err";
-          est.textContent="No se pudo confirmar el envio: "+(d.error||"ERROR")+
-            ". Comprueba el telefono antes de reintentar.";
+          const incertidumbre=Array.isArray(d.inciertos)&&d.inciertos.length>0;
+          est.textContent=incertidumbre
+            ? "Algunos envíos tienen resultado incierto ("+d.inciertos.length+
+              "). Comprueba WhatsApp. Para repetirlos, selecciona «Reenviar la invitación»."
+            : "No se pudo confirmar el envio: "+(d.error||"ERROR")+
+              ". Comprueba el telefono antes de reintentar.";
         }
       }catch(_){est.className="err";est.textContent="Error de conexión. Comprueba si llegó antes de reintentar.";}
       finally{envioActivo=false;actualizarBotonEnviar();}

@@ -15,6 +15,8 @@ const {crearAuthTurso}=require("./whatsapp/wa-auth-turso");
 const {crearLeaseWa}=require("./whatsapp/wa-lease");
 const {permitirVinculacionNueva}=require("./whatsapp/wa-pairing-policy");
 const {prepararNuevaVinculacion}=require("./whatsapp/wa-relink");
+const {crearEstabilidadWA}=require("./whatsapp/wa-stability");
+const {crearMonitorPersistenciaWa}=require("./whatsapp/wa-persistence-monitor");
 
 let makeWASocket;
 let initAuthCreds;
@@ -119,6 +121,8 @@ let waLeasePerdido = false;
 let waLeaseRenovando = false;
 let waResetInProgress = false;
 let waCredencialesPendientes = Promise.resolve();
+const estabilidadWA=crearEstabilidadWA();
+const persistenciaWA=crearMonitorPersistenciaWa();
 
 function bloquearPorPerdidaDeLease() {
   if (waLeasePerdido) return;
@@ -234,6 +238,7 @@ async function iniciarWhatsApp() {
       lease,
       claveHex: process.env.HS_WA_AUTH_ENC_KEY,
       permitirAltaNueva: permitirVinculacionNueva(process.env),
+      monitor: persistenciaWA,
       baileys: {initAuthCreds, BufferJSON, proto}
     }).abrir();
 
@@ -285,11 +290,12 @@ async function iniciarWhatsApp() {
       }
 
       if (connection === "open") {
+        estabilidadWA.abierta();
         whatsappConectado = true;
         qrActual = null;
         errorWhatsApp = null;
-        intentosFallidos = 0;
-
+        // No reiniciar el retroceso por una apertura fugaz seguida de error 500.
+        // Se reinicia cuando una conexión previa se mantuvo estable.
         console.log("WhatsApp conectado.");
         anunciarEstado();
         return;
@@ -303,6 +309,7 @@ async function iniciarWhatsApp() {
 
         const codigo =
           lastDisconnect?.error?.output?.statusCode;
+        if(estabilidadWA.cerrada(codigo).estable)intentosFallidos=0;
 
         errorWhatsApp =
           `Conexion cerrada (codigo ${codigo ?? "desconocido"})`;
@@ -558,6 +565,8 @@ app.post("/api/admin/catalogo/recuperar",http.adminWrite,(req,res)=>
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
   res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
+    diagnostico:estabilidadWA.estado({conectado:whatsappConectado}),
+    persistencia:persistenciaWA.estado(),
     requiereRevinculacion:!whatsappConectado && !sock &&
       typeof errorWhatsApp==="string" && errorWhatsApp.includes("codigo 401")});
 });
@@ -623,28 +632,36 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
     const enviados=[],reenviados=[],yaEnviados=[],fallidos=[],inciertos=[];
     for(let i=0;i<destinos.length;i++){
       const numero=destinos[i],esOriginalNueva=compra.nueva && i===0;
-      // Por defecto, no duplicar. Reenvío solo cuando lo pide expresamente admin.
-      const registrado=!esOriginalNueva &&
-        await grants.yaEnviado({compraId:compra.compraId,telefono:numero});
-      if(registrado && !reenviar){
+      const estado=esOriginalNueva?"incierto":await grants.estadoEnvio({
+        compraId:compra.compraId,telefono:numero
+      });
+      if(estado==="confirmado" && !reenviar){
         yaEnviados.push(numero);
         continue;
+      }
+      if(estado==="incierto" && !esOriginalNueva && !reenviar){
+        // Ya pudo enviarse antes de un reinicio; no duplicar automáticamente.
+        inciertos.push(numero);
+        continue;
+      }
+      if(!esOriginalNueva && estado!=="confirmado"){
+        // Primer destinatario nuevo queda marcado al crear la compra.
+        await grants.prepararIntentoEnvio({compraId:compra.compraId,telefono:numero});
       }
       try {await enviarWhatsApp(numero,mensaje);}
       catch(_){
         fallidos.push(numero);
         if(esOriginalNueva){
-          // Si falla el primer envio no dejar una nueva compra inutilizable.
           try{await grants.revocar({compraId:compra.compraId});}catch(_){}
           return res.status(503).json({ok:false,error:"ENVIO_INICIAL_NO_CONFIRMADO",fallidos});
         }
-        continue; // nunca reintentos automaticos de WhatsApp
+        continue;
       }
-      if(!esOriginalNueva && !registrado){
-        try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
-        catch(_){inciertos.push(numero);continue;}
-      }
-      if(registrado)reenviados.push(numero);
+      // Confirmar TAMBIÉN al primer destinatario; si falla este registro,
+      // no revocar un enlace que el proveedor pudo haber enviado.
+      try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
+      catch(_){inciertos.push(numero);continue;}
+      if(estado==="confirmado")reenviados.push(numero);
       else enviados.push(numero);
     }
     const ok=enviados.length>0||reenviados.length>0||yaEnviados.length>0;
