@@ -11,7 +11,7 @@ original: se crea la tabla auxiliar `hs_catalogo_archivados`.
 - Evita duplicados activos con coincidencia insensible a mayúsculas según SQLite.
 - Edición y archivado se bloquean si el ID figura en una compra abierta no expirada.
 - Alta durante compra abierta no añade automáticamente el nuevo producto a la compra.
-- Archivo lógico oculta el producto del catálogo, sin eliminar su fila ni su historial.
+- Archivo lógico oculta el producto del catálogo y desmarca agotado, sin eliminar su fila ni su historial. Impide que el producto entre en una compra posterior.
 - Consultas parametrizadas y transacciones de escritura contra la base seleccionada.
 - Notificación por WebSocket exclusivamente a administradores después de confirmar cambio.
 - La tabla auxiliar queda incluida en futuras exportaciones dinámicas v4.03.
