@@ -5,10 +5,16 @@ const {createClient}=require("@libsql/client");
 const {crearGrantsV2}=require("../security/v2-grants");
 const {crearIdentidadV2,generarMaterial}=require("../security/v2-identity");
 const fs=require("node:fs");
+const os=require("node:os");
+const path=require("node:path");
+const crypto=require("node:crypto");
 const vm=require("node:vm");
 
 async function fixture(fn){
-  const db=createClient({url:"file::memory:"});
+  // libsql usa varias conexiones internas: SQLite en archivo temporal aislado,
+  // para que las transacciones compartan el mismo esquema sin tocar producción.
+  const fichero=path.join(os.tmpdir(),"hogarstock-v405-"+process.pid+"-"+crypto.randomBytes(6).toString("hex")+".sqlite");
+  const db=createClient({url:"file:"+fichero});
   const A="34600000001",B="34600000002";
   const identidad=crearIdentidadV2({entorno:generarMaterial("clave-aislada-para-regresion-v405")});
   try{
@@ -17,7 +23,10 @@ async function fixture(fn){
     const grants=crearGrantsV2({db,identidad,contactos:[A,B]});
     await grants.init();
     await fn({db,grants,A,B});
-  }finally{db.close();}
+  }finally{
+    db.close();
+    for(const f of [fichero,fichero+"-wal",fichero+"-shm"]){try{fs.unlinkSync(f)}catch(_){}}
+  }
 }
 test("v4.05: primer destinatario queda incierto hasta confirmar su envío",async()=>{
   await fixture(async({grants,A})=>{
