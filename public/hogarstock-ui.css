@@ -619,3 +619,32 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
   .page-admin .category-pending{display:none}
   .page-admin .category-total{padding:2px 6px;font-size:.69rem}
 }
+
+/* v4.08: eliminación recuperable visible en escritorio y móvil. */
+.page-admin .product-row{display:flex;align-items:stretch;gap:7px;min-width:0}
+.page-admin .product-row .product-card{flex:1 1 auto;min-width:0}
+.page-admin .product-delete{
+  flex:0 0 44px;display:grid;place-items:center;min-height:56px;
+  border:1px solid #ead1ce;border-radius:12px;background:#fff9f8;
+  color:#923a35;font-size:1.08rem;line-height:1;
+  transition:background .16s,border-color .16s
+}
+.page-admin .product-delete:hover:not(:disabled){background:#ffebe8;border-color:#dc9991}
+.page-admin .product-delete:disabled{opacity:.45}
+.page-admin .product-delete:focus-visible{outline:3px solid #e0a39b;outline-offset:2px}
+.page-admin .btn-delete-product{border:1px solid #d59e99;border-radius:10px;
+  background:#fff4f2;color:#9b3b35;padding:11px 13px;font-weight:770}
+.page-admin .btn-delete-product:hover:not(:disabled){background:#ffe6e1}
+.page-admin .btn-delete-product:disabled{opacity:.55}
+.page-admin .catalogo-recuperacion{margin-top:17px;padding-top:14px;border-top:1px solid var(--line)}
+.page-admin .catalogo-recuperacion h3{margin:0 0 7px;font-size:.88rem}
+.page-admin .inventory-action-status{margin:0 0 14px;padding:12px 14px;border-radius:11px;
+  font-size:.85rem;font-weight:680;line-height:1.45}
+.page-admin .inventory-action-status[hidden]{display:none!important}
+.page-admin .inventory-action-status.ok{color:#1d6348;background:#eaf6ed;border:1px solid #c8e7d2}
+.page-admin .inventory-action-status.err{color:#a23d3a;background:#fff0ef;border:1px solid #f1cdcb}
+@media(max-width:650px){
+  .page-admin .product-row{gap:6px}
+  .page-admin .product-delete{flex-basis:44px;min-height:58px}
+  .page-admin .product-card{min-height:58px}
+}

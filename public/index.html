@@ -38,6 +38,7 @@
                  autocomplete="off">
         </div>
       </div>
+      <div id="inventarioAviso" class="inventory-action-status" role="status" aria-live="polite" hidden></div>
       <div id="lista" aria-live="polite"><p class="empty-result">Cargando inventario...</p></div>
       <p class="inventory-help">Selecciona los productos que necesitas comprar. Puedes modificarlos durante una compra compartida.</p>
       <p id="inventoryTotal" class="inventory-total" aria-live="polite"></p>
@@ -90,7 +91,7 @@
       <div id="estado" role="status" aria-live="polite"></div>
 
       <details class="password-panel catalog-panel">
-        <summary>Gestionar productos</summary>
+        <summary>Gestionar productos · Añadir, editar o eliminar</summary>
         <form id="formCatalogoAlta" onsubmit="anadirProducto(event)">
           <p>Añade productos sin modificar compras ya abiertas.</p>
           <label for="nuevoProductoNombre">Nombre del producto</label>
@@ -112,7 +113,7 @@
           <button type="submit" id="btnCatalogoAlta">Añadir producto</button>
         </form>
         <form id="formCatalogoEditar" onsubmit="editarProductoCatalogo(event)">
-          <p>Editar o archivar conserva el historial. Se bloquea si el artículo pertenece a una compra activa.</p>
+          <p>Puedes eliminar un producto del inventario sin borrar su historial. No se permite eliminarlo si forma parte de una compra compartida activa.</p>
           <label for="catalogoElegido">Producto existente</label>
           <select id="catalogoElegido" onchange="seleccionarProductoCatalogo()"></select>
           <label for="catalogoNombreEdit">Nombre</label>
@@ -132,16 +133,17 @@
             <option value="Cosmética y belleza">Cosmética y belleza</option>
           </select>
           <button type="submit" id="btnCatalogoEditar">Guardar cambios</button>
-          <button type="button" id="btnCatalogoArchivar" onclick="archivarProductoCatalogo()">Archivar producto</button>
+          <button type="button" id="btnCatalogoArchivar" class="btn-delete-product" onclick="archivarProductoCatalogo()" disabled>🗑️ Eliminar del inventario</button>
         </form>
         <div class="catalogo-recuperacion">
-          <p>¿Archivaste algo por error? Puedes recuperarlo sin perder su historial.</p>
-          <button type="button" id="btnConsultarArchivados" onclick="consultarArchivadosCatalogo()">Ver archivados</button>
-          <label for="catalogoArchivados">Productos archivados</label>
+          <h3>Productos eliminados</h3>
+          <p>La eliminación es reversible: los productos dejan de aparecer, pero conservan sus identificadores e historial.</p>
+          <button type="button" id="btnConsultarArchivados" onclick="consultarArchivadosCatalogo()">Ver productos eliminados</button>
+          <label for="catalogoArchivados">Elegir producto eliminado</label>
           <select id="catalogoArchivados">
-            <option value="">Pulsa «Ver archivados»</option>
+            <option value="">Pulsa «Ver productos eliminados»</option>
           </select>
-          <button type="button" id="btnCatalogoRecuperar" onclick="recuperarProductoCatalogo()" disabled>Recuperar producto</button>
+          <button type="button" id="btnCatalogoRecuperar" onclick="recuperarProductoCatalogo()" disabled>↩ Recuperar producto eliminado</button>
         </div>
         <p id="catalogoEstado" role="status" aria-live="polite"></p>
       </details>
@@ -479,7 +481,7 @@
         selector.replaceChildren();
         const inicial=document.createElement("option");
         inicial.value="";
-        inicial.textContent=archivados.length?"Selecciona un producto":"No hay productos archivados";
+        inicial.textContent=archivados.length?"Selecciona un producto":"No hay productos eliminados";
         selector.append(inicial);
         for(const p of archivados){
           const op=document.createElement("option");
@@ -488,7 +490,7 @@
           selector.append(op);
         }
         document.getElementById("btnCatalogoRecuperar").disabled=archivados.length===0;
-        avisarCatalogo(archivados.length+" productos archivados encontrados.");
+        avisarCatalogo(archivados.length+" productos eliminados encontrados.");
       }catch(e){
         selector.replaceChildren();
         document.getElementById("btnCatalogoRecuperar").disabled=true;
@@ -512,17 +514,49 @@
         avisarCatalogo("No se pudo recuperar: "+String(e.message||"ERROR"),true);
       }finally{boton.disabled=false;}
     }
-    async function archivarProductoCatalogo(){
-      const id=Number(document.getElementById("catalogoElegido").value);
-      if(!id||!confirm("¿Archivar este producto? Se ocultará, pero su historial se conservará."))return;
+    let eliminandoProductoCatalogo=false;
+    function avisoEliminacion(mensaje,error=false){
+      const el=document.getElementById("inventarioAviso");
+      el.textContent=mensaje;
+      el.className="inventory-action-status "+(error?"err":"ok");
+      el.hidden=false;
+      avisarCatalogo(mensaje,error);
+      if(error)el.scrollIntoView({behavior:"smooth",block:"nearest"});
+    }
+    async function eliminarProductoCatalogo(id){
+      if(eliminandoProductoCatalogo)return;
+      id=Number(id);
+      const p=allProductos.find(x=>Number(x.id)===id);
+      if(!p||!Number.isSafeInteger(id)||id<1){
+        avisoEliminacion("Selecciona un producto existente para eliminar.",true);
+        return;
+      }
+      if(!confirm("¿Eliminar «"+p.nombre+"» del inventario?\n\nDejará de aparecer en tus categorías, pero podrás recuperarlo con su historial desde Gestionar productos."))
+        return;
+      eliminandoProductoCatalogo=true;
       const boton=document.getElementById("btnCatalogoArchivar");
       boton.disabled=true;
+      document.querySelectorAll(".product-delete").forEach(b=>b.disabled=true);
       try{
         await enviarCatalogo("/api/admin/catalogo/archivar",{id});
-        avisarCatalogo("Producto archivado. Historial conservado.");
-        void consultarArchivadosCatalogo();
-      }catch(e){avisarCatalogo("No se pudo archivar: "+String(e.message||"ERROR"),true);}
-      finally{seleccionarProductoCatalogo();}
+        avisoEliminacion("«"+p.nombre+"» eliminado del inventario. Puedes recuperarlo en Gestionar productos.");
+        await consultarArchivadosCatalogo();
+        avisoEliminacion("«"+p.nombre+"» eliminado del inventario. Puedes recuperarlo en Gestionar productos.");
+      }catch(e){
+        const codigo=String(e.message||"ERROR");
+        const mensaje=codigo==="HS_CATALOGO_COMPRA_ACTIVA"
+          ?"No se puede eliminar «"+p.nombre+"» porque pertenece a una compra compartida activa. Finaliza esa compra antes."
+          :"No se pudo eliminar «"+p.nombre+"»: "+codigo;
+        avisoEliminacion(mensaje,true);
+      }finally{
+        eliminandoProductoCatalogo=false;
+        seleccionarProductoCatalogo();
+        document.querySelectorAll(".product-delete").forEach(b=>b.disabled=false);
+      }
+    }
+    // Se conserva el nombre de función anterior por compatibilidad con el panel.
+    async function archivarProductoCatalogo(){
+      return eliminarProductoCatalogo(Number(document.getElementById("catalogoElegido").value));
     }
 
     let allProductos = [];
@@ -705,7 +739,7 @@
         const pendientes=agrupados[cat].filter(p=>p.agotado).length;
         html += `<section class="category-block ${estaAbierta ? 'abierta' : ''}"><button type="button" class="category-header" data-categoria="${escapar(cat)}" aria-expanded="${estaAbierta}" onclick="toggleCategoria(decodeURIComponent('${encodeURIComponent(cat).replace(/'/g, '%27')}'))"><span class="category-heading"><span class="category-glyph tone-${tonoCategoria(cat)}" aria-hidden="true">${iconoCategoria(cat)}</span><span class="category-label">${escapar(cat)}</span><span class="category-total">${agrupados[cat].length}</span></span><span class="category-end">${pendientes ? '<span class="category-pending">'+pendientes+' por comprar</span>' : '' }<span class="arrow" aria-hidden="true">▶</span></span></button><div class="category-content">`;
         agrupados[cat].forEach(p => {
-          html += `<button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button>`;
+          html += `<div class="product-row"><button type="button" class="product-card ${p.agotado ? 'agotado' : ''}" aria-pressed="${Boolean(p.agotado)}" onclick="toggleAgotado(${Number(p.id)})"><span class="custom-checkbox" aria-hidden="true"></span><span class="product-name">${escapar(p.nombre)}</span><span class="product-meta">${p.agotado ? 'Por comprar' : ''}</span></button><button type="button" class="product-delete" onclick="eliminarProductoCatalogo(${Number(p.id)})" aria-label="Eliminar ${escapar(p.nombre)} del inventario" title="Eliminar del inventario"><span aria-hidden="true">🗑️</span></button></div>`;
         });
         html += `</div></section>`;
       }
