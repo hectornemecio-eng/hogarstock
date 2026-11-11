@@ -8,6 +8,7 @@ const {crearIdentidadV2}=require("./security/v2-identity");
 const {crearAlmacenClaveAdmin}=require("./security/v2-password-store");
 const {crearRespaldoCifrado}=require("./backup/backup-safe");
 const {crearGestionCatalogo}=require("./catalogo/gestion-v404");
+const {crearRevisionCatalogo}=require("./catalogo/ajustes-v407");
 const {crearHTTPV2}=require("./security/v2-http");
 const {crearCanalCompradores}=require("./security/v2-buyer-ws");
 const {crearGrantsV2}=require("./security/v2-grants");
@@ -77,6 +78,7 @@ const http=crearHTTPV2({identidad,almacenAdmin,origen});
 const contactos=(process.env.WA_ALLOWED_NUMBERS||"").split(",").map(x=>x.trim()).filter(Boolean);
 const grants=crearGrantsV2({db,identidad,contactos});
 const catalogo=crearGestionCatalogo({db});
+const revisionCatalogo=crearRevisionCatalogo({db});
 const compradoresWS=crearCanalCompradores({WebSocketServer,identidad,grants,origen});
 let envioListaEnCurso=false;
 server.on("upgrade",(req,socket,head)=>{
@@ -756,6 +758,38 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
     await almacenAdmin.init();
     await grants.init();
     await catalogo.init();
+    // Los cambios son atómicos, auditados y no se ejecutan durante una compra activa.
+    // Ante un fallo puntual, mantener la app operativa y reintentar sin acciones manuales.
+    let actualizandoCatalogo=false,revisionPendiente=true;
+    async function comprobarRevisionCatalogo(){
+      if(actualizandoCatalogo||!revisionPendiente)return;
+      actualizandoCatalogo=true;
+      try{
+        const resultado=await revisionCatalogo.aplicar();
+        if(resultado.aplazado){
+          console.log("Catálogo v4.07: aplazado por compra activa.");
+        }else{
+          revisionPendiente=false;
+          console.log("Catálogo v4.07: "+JSON.stringify(resultado));
+          if(resultado.aplicado){
+            try{broadcast({type:"update",productos:await catalogo.listar()});}catch(_){}
+          }
+        }
+      }catch(error){
+        // Solo el identificador estable del fallo. No registrar datos de inventario.
+        console.error("Catálogo v4.07: cambio pendiente por error: "+
+          String(error?.message||"ERROR").slice(0,100));
+      }finally{actualizandoCatalogo=false;}
+    }
+    await comprobarRevisionCatalogo();
+    if(revisionPendiente){
+      const intervalo=setInterval(()=>{
+        void comprobarRevisionCatalogo().then(()=>{
+          if(!revisionPendiente)clearInterval(intervalo);
+        });
+      },60000);
+      intervalo.unref?.();
+    }
     const puerto = process.env.PORT || 3000;
     server.listen(puerto, soloLaboratorio ? "127.0.0.1" : undefined, () => {
       console.log(
