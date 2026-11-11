@@ -2,10 +2,13 @@
 // Notificaciones en tiempo real para compradores autorizados.
 // Los mensajes NO contienen inventario, teléfonos ni tokens.
 function crearCanalCompradores({WebSocketServer,identidad,grants,origen,maxConexiones=64}={}) {
+  const esLabLoopback=process.env.NODE_ENV==="test" &&
+    process.env.HS_V2_LAB_NO_WHATSAPP==="1" &&
+    /^http:\/\/127\.0\.0\.1:\d+$/.test(origen||"");
   if(typeof WebSocketServer!=="function" ||
     typeof identidad?.leerComprador!=="function" ||
     typeof grants?.listar!=="function" ||
-    typeof origen!=="string" || !/^https:\/\//.test(origen) ||
+    typeof origen!=="string" || (!/^https:\/\//.test(origen) && !esLabLoopback) ||
     !Number.isSafeInteger(maxConexiones)||maxConexiones<1||maxConexiones>256)
     throw Error("HS_BUYER_WS_CONFIG_INVALIDA");
 
