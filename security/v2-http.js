@@ -9,12 +9,16 @@ function crearHTTPV2({identidad, almacenAdmin, origen, reloj=Date.now}={}) {
   }
   let url;
   try {url=new URL(origen);}catch(_){throw Error("HS_V2_ORIGEN_INVALIDO");}
-  if (url.protocol!=="https:" || url.origin!==origen || url.hostname!=="hogarstock.onrender.com") {
-    // Este parche es EXCLUSIVAMENTE para V2 Render; los ensayos HTTP deben
-    // inyectar el origen ficticio https://hogarstock.test.invalid.
-    if (url.protocol!=="https:" || url.origin!==origen ||
-        url.hostname!=="hogarstock.test.invalid")throw Error("HS_V2_ORIGEN_INVALIDO");
-  }
+  const labLocal=(process.env.HS_V2_LAB_NO_WHATSAPP==="1" &&
+    process.env.NODE_ENV==="test" && url.protocol==="http:" &&
+    url.hostname==="127.0.0.1" && url.port!=="" &&
+    url.origin===origen);
+  const origenPrueba=(url.protocol==="https:" &&
+    url.hostname==="hogarstock.test.invalid" && url.origin===origen);
+  const origenRender=(url.protocol==="https:" &&
+    url.hostname==="hogarstock.onrender.com" && url.origin===origen);
+  if(!labLocal && !origenPrueba && !origenRender)
+    throw Error("HS_V2_ORIGEN_INVALIDO");
   const fallos = new Map();
   function json(res,code,data) {
     res.setHeader("Cache-Control","no-store");

@@ -545,6 +545,9 @@ app.post("/api/admin/catalogo/archivar",http.adminWrite,(req,res)=>
 
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
+  if(process.env.HS_V2_LAB_NO_WHATSAPP==="1" && process.env.NODE_ENV==="test")
+    return res.json({conectado:false,qr:null,error:null,modoLaboratorio:true,
+      requiereRevinculacion:false});
   res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
     requiereRevinculacion:!whatsappConectado && !sock &&
       typeof errorWhatsApp==="string" && errorWhatsApp.includes("codigo 401")});
@@ -713,8 +716,12 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
 (async () => {
   try {
     const soloLaboratorio=process.env.HS_V2_LAB_NO_WHATSAPP === "1";
+    const puertoLab=Number(process.env.PORT||3000);
+    const origenLocal="http://127.0.0.1:"+puertoLab;
     if (soloLaboratorio && (process.env.NODE_ENV !== "test" ||
-      process.env.PUBLIC_BASE_URL !== "https://hogarstock.test.invalid")) {
+      (process.env.PUBLIC_BASE_URL !== "https://hogarstock.test.invalid" &&
+       !(Number.isSafeInteger(puertoLab) && puertoLab>0 && puertoLab<65536 &&
+         process.env.PUBLIC_BASE_URL===origenLocal)))) {
       throw Error("HS_V2_LAB_REQUIERE_ORIGEN_FICTICIO");
     }
     // Validar ANTES de crear tablas en la base remota; no hacer fallback

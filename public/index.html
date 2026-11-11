@@ -565,7 +565,13 @@
         const modal = document.getElementById("qrModal");
         document.getElementById("btnRevincularWA").style.display =
           data.requiereRevinculacion ? "block" : "none";
-        if (data.conectado) {
+        if(data.modoLaboratorio){
+          el.className="wa-status wa-off";
+          el.textContent="WhatsApp desactivado — demostración local";
+          modal.style.display="none";
+          ultimoQR=null;
+          document.getElementById("qrcode").replaceChildren();
+        }else if (data.conectado) {
           el.className = "wa-status wa-on";
           el.innerHTML = '<div class="dot"></div> WhatsApp: Conectado ✅';
           modal.style.display = "none";

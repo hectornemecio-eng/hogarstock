@@ -3,7 +3,10 @@
  // El hash de administrador puede rotarse a través de Turso; nunca guardar texto claro.
 const crypto = require("node:crypto");
 const HEX64 = /^[a-f0-9]{64}$/i;
-const COOKIE_NAME = "__Host-hs_v2_admin";
+const ES_LAB_LOCAL = process.env.NODE_ENV==="test" &&
+  process.env.HS_V2_LAB_NO_WHATSAPP==="1" &&
+  /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.PUBLIC_BASE_URL||"");
+const COOKIE_NAME = ES_LAB_LOCAL ? "hs_lab_local_admin" : "__Host-hs_v2_admin";
 const TTL_MS = 2 * 60 * 60 * 1000;
 
 function parseCookies(header) {
@@ -116,11 +119,14 @@ function crearIdentidadV2({entorno, reloj = Date.now, aleatorio = crypto.randomB
     const m=/^a1\.\d{13}\.([a-f0-9]{48})\./.exec(raw);
     return Boolean(m&&sesionesActivas.delete(m[1]));
   }
+  const atributosCookie=ES_LAB_LOCAL ?
+    "; Path=/; HttpOnly; SameSite=Strict" :
+    "; Path=/; Secure; HttpOnly; SameSite=Strict";
   function cookieHeader(value,maxAge=7200) {
-    if (typeof value!=="string" || /[;\r\n\s]/.test(value)) throw Error("HS_V2_COOKIE_INVALIDA");
-    return `${COOKIE_NAME}=${value}; Path=/; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`;
+    if (typeof value!=="string" || /[;\r\n\s]/.test(value)) throw Error("HS_V2_COOKIE_INVALIDO");
+    return `${COOKIE_NAME}=${value}; Max-Age=${maxAge}${atributosCookie}`;
   }
-  function borrarCookie(){return `${COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict`;}
+  function borrarCookie(){return `${COOKIE_NAME}=; Max-Age=0${atributosCookie}`;}
   function emitirComprador({idCompra, ttlMs=24*60*60*1000}={}) {
     if (typeof idCompra!=="string" || !/^[a-f0-9]{48}$/.test(idCompra) ||
       !Number.isSafeInteger(ttlMs) || ttlMs<60000 || ttlMs>86400000) {
