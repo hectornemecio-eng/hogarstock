@@ -23,6 +23,12 @@ jobs:
         run: node --test tests/*.test.js
       - name: Probar servidor HTTP y SQLite locales
         run: node lab/start-local-v404.js --smoke-test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Compatibilidad con Node 24 y mismas dependencias Windows
+        run: node lab/start-local-v404.js --smoke-test
       - name: Preparar copia con dependencias Windows
         shell: pwsh
         run: |
