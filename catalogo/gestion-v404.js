@@ -12,8 +12,8 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
   function exigirInit(){if(!inicializado)throw Error("HS_CATALOGO_NO_INICIALIZADO");}
   function texto(valor,max,etiqueta) {
     if(typeof valor!=="string")throw Error("HS_CATALOGO_"+etiqueta+"_INVALIDO");
-    const limpio=valor.trim().replace(/\\s+/g," ");
-    if(!limpio || limpio.length>max || /[\\u0000-\\u001f\\u007f]/.test(limpio))
+    const limpio=valor.trim().replace(/\s+/g," ");
+    if(!limpio || limpio.length>max || /[\u0000-\u001f\u007f]/.test(limpio))
       throw Error("HS_CATALOGO_"+etiqueta+"_INVALIDO");
     return limpio;
   }
