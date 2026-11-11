@@ -87,6 +87,31 @@
       </label>
       <button id="btnEnviar" type="button" class="btn-primary" onclick="enviarLista()" disabled>Enviar lista compartida</button>
       <div id="estado" role="status" aria-live="polite"></div>
+
+      <details class="password-panel catalog-panel">
+        <summary>Gestionar productos</summary>
+        <form id="formCatalogoAlta" onsubmit="anadirProducto(event)">
+          <p>Añade productos sin modificar compras ya abiertas.</p>
+          <label for="nuevoProductoNombre">Nombre del producto</label>
+          <input id="nuevoProductoNombre" type="text" maxlength="120" required>
+          <label for="nuevaCategoria">Categoría</label>
+          <input id="nuevaCategoria" type="text" maxlength="60" required list="categoriasCatalogo">
+          <datalist id="categoriasCatalogo"></datalist>
+          <button type="submit" id="btnCatalogoAlta">Añadir producto</button>
+        </form>
+        <form id="formCatalogoEditar" onsubmit="editarProductoCatalogo(event)">
+          <p>Editar o archivar conserva el historial. Se bloquea si el artículo pertenece a una compra activa.</p>
+          <label for="catalogoElegido">Producto existente</label>
+          <select id="catalogoElegido" onchange="seleccionarProductoCatalogo()"></select>
+          <label for="catalogoNombreEdit">Nombre</label>
+          <input id="catalogoNombreEdit" type="text" maxlength="120" required>
+          <label for="catalogoCategoriaEdit">Categoría</label>
+          <input id="catalogoCategoriaEdit" type="text" maxlength="60" required list="categoriasCatalogo">
+          <button type="submit" id="btnCatalogoEditar">Guardar cambios</button>
+          <button type="button" id="btnCatalogoArchivar" onclick="archivarProductoCatalogo()">Archivar producto</button>
+        </form>
+        <p id="catalogoEstado" role="status" aria-live="polite"></p>
+      </details>
       <details class="backup-panel">
         <summary>Descargar copia de seguridad</summary>
         <form id="formRespaldo" onsubmit="descargarRespaldo(event)">
@@ -334,6 +359,93 @@
       }
     }
 
+
+    function avisarCatalogo(mensaje,error=false){
+      const el=document.getElementById("catalogoEstado");
+      el.className=error?"err":"ok";
+      el.textContent=mensaje;
+    }
+    function seleccionarProductoCatalogo(){
+      const id=Number(document.getElementById("catalogoElegido").value);
+      const p=allProductos.find(x=>Number(x.id)===id);
+      document.getElementById("catalogoNombreEdit").value=p?p.nombre:"";
+      document.getElementById("catalogoCategoriaEdit").value=p?p.categoria:"";
+      document.getElementById("btnCatalogoEditar").disabled=!p;
+      document.getElementById("btnCatalogoArchivar").disabled=!p;
+    }
+    function actualizarEditorCatalogo(){
+      const el=document.getElementById("catalogoElegido");
+      const previo=el.value;
+      el.replaceChildren();
+      const opcion=document.createElement("option");
+      opcion.value="";opcion.textContent="Selecciona un producto";
+      el.append(opcion);
+      for(const p of allProductos){
+        const opt=document.createElement("option");
+        opt.value=String(p.id);
+        opt.textContent=p.categoria+" · "+p.nombre;
+        el.append(opt);
+      }
+      el.value=allProductos.some(p=>String(p.id)===previo)?previo:"";
+      const categorias=document.getElementById("categoriasCatalogo");
+      categorias.replaceChildren();
+      for(const c of [...new Set(allProductos.map(p=>p.categoria))].sort()){
+        const opt=document.createElement("option");
+        opt.value=c;
+        categorias.append(opt);
+      }
+      seleccionarProductoCatalogo();
+    }
+    async function enviarCatalogo(url,datos){
+      const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(datos)});
+      const d=await res.json();
+      if(!res.ok||!d.ok)throw Error(d.error||"OPERACION_NO_CONFIRMADA");
+      sincronizarCatalogo();
+      return d;
+    }
+    async function anadirProducto(event){
+      event.preventDefault();
+      const boton=document.getElementById("btnCatalogoAlta");
+      if(boton.disabled)return;
+      boton.disabled=true;
+      try{
+        await enviarCatalogo("/api/admin/catalogo/crear",{
+          nombre:document.getElementById("nuevoProductoNombre").value,
+          categoria:document.getElementById("nuevaCategoria").value
+        });
+        document.getElementById("nuevoProductoNombre").value="";
+        avisarCatalogo("Producto añadido correctamente.");
+      }catch(e){avisarCatalogo("No se pudo añadir: "+String(e.message||"ERROR"),true);}
+      finally{boton.disabled=false;}
+    }
+    async function editarProductoCatalogo(event){
+      event.preventDefault();
+      const boton=document.getElementById("btnCatalogoEditar");
+      if(boton.disabled)return;
+      boton.disabled=true;
+      try{
+        await enviarCatalogo("/api/admin/catalogo/editar",{
+          id:Number(document.getElementById("catalogoElegido").value),
+          nombre:document.getElementById("catalogoNombreEdit").value,
+          categoria:document.getElementById("catalogoCategoriaEdit").value
+        });
+        avisarCatalogo("Producto actualizado correctamente.");
+      }catch(e){avisarCatalogo("No se pudo editar: "+String(e.message||"ERROR"),true);}
+      finally{seleccionarProductoCatalogo();}
+    }
+    async function archivarProductoCatalogo(){
+      const id=Number(document.getElementById("catalogoElegido").value);
+      if(!id||!confirm("¿Archivar este producto? Se ocultará, pero su historial se conservará."))return;
+      const boton=document.getElementById("btnCatalogoArchivar");
+      boton.disabled=true;
+      try{
+        await enviarCatalogo("/api/admin/catalogo/archivar",{id});
+        avisarCatalogo("Producto archivado. Historial conservado.");
+      }catch(e){avisarCatalogo("No se pudo archivar: "+String(e.message||"ERROR"),true);}
+      finally{seleccionarProductoCatalogo();}
+    }
+
     let allProductos = [];
     function actualizarIndicadores(){
       const total=allProductos.length;
@@ -355,7 +467,7 @@
         .then(data => {
           // No sobrescribir con un GET antiguo lo que ya notificó WebSocket.
           if(revision!==revisionCatalogo || !Array.isArray(data))return;
-          allProductos=data;filtrarProductos();
+          allProductos=data;filtrarProductos();actualizarEditorCatalogo();
         })
         .catch(() => { console.warn("No se pudo resincronizar HogarStock."); });
     }
@@ -378,7 +490,7 @@
           if(Array.isArray(data.productos)){
             ++revisionCatalogo;
             allProductos=data.productos;
-            filtrarProductos();
+            filtrarProductos();actualizarEditorCatalogo();
           }else{
             sincronizarCatalogo();
           }

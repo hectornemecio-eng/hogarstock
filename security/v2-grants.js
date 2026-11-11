@@ -217,11 +217,16 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
   }
   // El administrador puede editar la lista aunque exista una compra compartida.
   // Producto y lista se sincronizan dentro de la MISMA transaccion write.
-  async function alternarProducto({productoId}={}) {
+  async function alternarProducto({productoId,verificarActivo}={}) {
     exigirInit();
     if(!Number.isSafeInteger(productoId)||productoId<1)
       throw Error("HS_V2_PRODUCTO_INVALIDO");
+    if(verificarActivo!==undefined && typeof verificarActivo!=="function")
+      throw Error("HS_V2_GUARDIA_CATALOGO_INVALIDA");
     return enTransaccion(db,async tx=>{
+      // v4.04: comprobar archivado en la misma transaccion que cambia agotado.
+      // Opcional para conservar compatibilidad con laboratorios anteriores.
+      if(verificarActivo)await verificarActivo(tx,productoId);
       const r=await tx.execute({
         sql:"SELECT agotado FROM productos WHERE id=? LIMIT 1",
         args:[productoId]
