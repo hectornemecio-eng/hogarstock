@@ -4,7 +4,8 @@ name: HogarStock - ping Render (gratis)
 on:
   schedule:
     # Cada 10 minutos en UTC. Evitar minuto 0 reduce retrasos de GitHub.
-    - cron: "7,17,27,37,47,57 * * * *"
+    - cron: "9,19,29,39,49,59 * * * *"
+  # Re-registrar la programación en main y comprobar el ping de inmediato por push.
   workflow_dispatch:
   pull_request:
     branches: [main]
