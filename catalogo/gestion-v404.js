@@ -99,6 +99,8 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
     return txWrite(async tx=>{
       await activo(tx,id);
       await vinculadoACompraActiva(tx,id);
+      // Si estaba agotado, no debe entrar en ninguna compra nueva.
+      await tx.execute({sql:"UPDATE productos SET agotado=0 WHERE id=?",args:[id]});
       await tx.execute({sql:
         "INSERT INTO "+TABLA+"(producto_id,fecha) VALUES(?,?)",args:[id,reloj()]});
       return {id,archivado:true};
