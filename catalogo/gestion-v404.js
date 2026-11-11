@@ -106,6 +106,10 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
       return {id,archivado:true};
     });
   }
-  return Object.freeze({init,listar,crear,editar,archivar});
+  async function verificarActivo(tx,id) {
+    exigirInit();
+    await activo(tx,id);
+  }
+  return Object.freeze({init,listar,crear,editar,archivar,verificarActivo});
 }
 module.exports={crearGestionCatalogo};

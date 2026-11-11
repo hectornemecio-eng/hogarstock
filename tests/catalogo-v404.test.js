@@ -7,13 +7,14 @@ const path=require("node:path");
 const crypto=require("node:crypto");
 const {createClient}=require("@libsql/client");
 const {crearGestionCatalogo}=require("../catalogo/gestion-v404");
+const {crearGrantsV2}=require("../security/v2-grants");
 
 async function laboratorio(fn){
   const nombre=path.join(os.tmpdir(),"hogarstock-v404-"+process.pid+"-"+crypto.randomBytes(6).toString("hex")+".sqlite");
   const db=createClient({url:"file:"+nombre});
   try{
     await db.execute("CREATE TABLE productos(id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,categoria TEXT NOT NULL,agotado INTEGER DEFAULT 0)");
-    await db.execute("CREATE TABLE hs_v2_security_grants(compra_id TEXT PRIMARY KEY,estado TEXT,expira INTEGER)");
+    await db.execute("CREATE TABLE hs_v2_security_grants(compra_id TEXT PRIMARY KEY, token_hash TEXT, telefono TEXT, creada INTEGER, expira INTEGER,estado TEXT)");
     await db.execute("CREATE TABLE hs_v2_security_items(compra_id TEXT,producto_id INTEGER,estado TEXT)");
     const catalogo=crearGestionCatalogo({db});
     await catalogo.init();
@@ -41,7 +42,7 @@ test("v4.04: alta, edicion, deteccion duplicados y validacion estricta",async()=
 test("v4.04: archivado logico preserva filas y bloquea editar/archivar activo",async()=>{
   await laboratorio(async({db,catalogo})=>{
     const p=await catalogo.crear({nombre:"Patatas",categoria:"Verduras"});
-    await db.execute({sql:"INSERT INTO hs_v2_security_grants VALUES(?,?,?)",
+    await db.execute({sql:"INSERT INTO hs_v2_security_grants(compra_id,estado,expira) VALUES(?,?,?)",
       args:["compra-ficticia","abierta",Date.now()+60000]});
     await db.execute({sql:"INSERT INTO hs_v2_security_items VALUES(?,?,?)",
       args:["compra-ficticia",p.id,"pendiente"]});
@@ -70,4 +71,39 @@ test("v4.04: las rutas requieren administrador con CSRF y no exponen escrituras 
   assert(server.includes('broadcast({type:"update",productos:await catalogo.listar()})'));
   assert(ui.includes('onsubmit="anadirProducto(event)"'));
   assert(ui.includes('onclick="archivarProductoCatalogo()"'));
+});
+
+test("v4.04: el endpoint de marcado no puede reactivar un producto archivado",async()=>{
+  await laboratorio(async({db,catalogo})=>{
+    const grants=crearGrantsV2({db,contactos:[],
+      identidad:{emitirComprador(){throw Error("SIN_COMPRAS_EN_TEST");}}});
+    await grants.init();
+    const p=await catalogo.crear({nombre:"Aceite de prueba",categoria:"Despensa"});
+    const primera=await grants.alternarProducto({
+      productoId:p.id,verificarActivo:catalogo.verificarActivo
+    });
+    assert.equal(primera.nuevoEstado,1);
+    await catalogo.archivar({id:p.id});
+    await assert.rejects(
+      grants.alternarProducto({productoId:p.id,verificarActivo:catalogo.verificarActivo}),
+      /HS_CATALOGO_NO_ENCONTRADO/
+    );
+    assert.equal(Number((await db.execute({sql:"SELECT agotado FROM productos WHERE id=?",args:[p.id]})).rows[0].agotado),0);
+    assert.equal((await catalogo.listar()).length,0);
+    const ok=await catalogo.crear({nombre:"Arroz de prueba",categoria:"Despensa"});
+    const segunda=await grants.alternarProducto({
+      productoId:ok.id,verificarActivo:catalogo.verificarActivo
+    });
+    assert.equal(segunda.nuevoEstado,1);
+  });
+});
+test("v4.04: escritura confirmada tiene respuesta de exito aunque falle notificacion",()=>{
+  const src=fs.readFileSync("server.js","utf8");
+  const a=src.indexOf("async function ejecutarCambioCatalogo(");
+  const b=src.indexOf('app.post("/api/admin/catalogo/crear"',a);
+  assert(a>0&&b>a);
+  const procedimiento=src.slice(a,b);
+  assert(procedimiento.includes("resultado=await accion()"));
+  assert(procedimiento.includes("catch(error){return errorCatalogo(res,error);}"));
+  assert(procedimiento.includes("return res.json({ok:true,...resultado})"));
 });

@@ -28,3 +28,12 @@ original: se crea la tabla auxiliar `hs_catalogo_archivados`.
 `tests/catalogo-v404.test.js` valida altas, errores, edición, archivo e integridad
 referencial con SQLite ficticio en memoria. La CI de la rama ejecuta además
 toda la batería de regresión existente. **No fusionar ni desplegar sin S/N.**
+
+## Revisión de consistencia (11/11/2026)
+- Corregida vía administrativa alternativa: `POST /api/agotar/:id` comprueba
+  en la **misma transacción** que el producto no está archivado.
+- No se marca como agotado ni se incorpora a una compra futura un producto archivado,
+  aunque se invoque manualmente una ruta antigua.
+- Si el cambio ya quedó confirmado, un fallo posterior del broadcast o de la lectura
+  del catálogo no devuelve un falso error; el cliente puede resincronizar.
+- Cobertura mediante pruebas de laboratorio con libSQL, sin Turso real ni WhatsApp.

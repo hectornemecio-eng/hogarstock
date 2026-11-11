@@ -526,11 +526,15 @@ function errorCatalogo(res,error){
   return res.status(503).json({error:"HS_CATALOGO_ERROR"});
 }
 async function ejecutarCambioCatalogo(res,accion){
+  let resultado;
+  try{resultado=await accion();}
+  catch(error){return errorCatalogo(res,error);}
+  // La escritura ya se confirmo: un error de notificacion no debe provocar
+  // una respuesta falsa de fallo ni inducir un reintento duplicado.
   try{
-    const resultado=await accion();
     broadcast({type:"update",productos:await catalogo.listar()});
-    return res.json({ok:true,...resultado});
-  }catch(error){return errorCatalogo(res,error);}
+  }catch(_){console.error("HogarStock: actualizar la pantalla tras cambio de catalogo fallo.");}
+  return res.json({ok:true,...resultado});
 }
 app.post("/api/admin/catalogo/crear",http.adminWrite,(req,res)=>
   ejecutarCambioCatalogo(res,()=>catalogo.crear(req.body)));
@@ -578,11 +582,17 @@ app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID_INVALIDO"});
-    const cambio=await grants.alternarProducto({productoId:id});
+    const cambio=await grants.alternarProducto({
+      productoId:id,verificarActivo:catalogo.verificarActivo
+    });
     broadcast({type:"update",productos:await catalogo.listar()}); // WS SOLO admin
     if(cambio.compraId)compradoresWS.notificar({compraId:cambio.compraId});
     res.json({ok:true,nuevoEstado:cambio.nuevoEstado,compraActiva:cambio.compraActiva});
-  }catch(error){resultadoPublico(res,error);}
+  }catch(error){
+    if(String(error?.message||"")==="HS_CATALOGO_NO_ENCONTRADO")
+      return res.status(404).json({error:"PRODUCTO_ARCHIVADO_O_INEXISTENTE"});
+    resultadoPublico(res,error);
+  }
 });
 app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
   if(!whatsappConectado||!sock)return res.status(503).json({error:"WHATSAPP_NO_CONECTADO"});
