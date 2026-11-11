@@ -7,6 +7,7 @@ const { db, initDB } = require("./db");
 const {crearIdentidadV2}=require("./security/v2-identity");
 const {crearAlmacenClaveAdmin}=require("./security/v2-password-store");
 const {crearRespaldoCifrado}=require("./backup/backup-safe");
+const {crearGestionCatalogo}=require("./catalogo/gestion-v404");
 const {crearHTTPV2}=require("./security/v2-http");
 const {crearCanalCompradores}=require("./security/v2-buyer-ws");
 const {crearGrantsV2}=require("./security/v2-grants");
@@ -73,6 +74,7 @@ const origen=(process.env.PUBLIC_BASE_URL||"https://hogarstock.onrender.com").re
 const http=crearHTTPV2({identidad,almacenAdmin,origen});
 const contactos=(process.env.WA_ALLOWED_NUMBERS||"").split(",").map(x=>x.trim()).filter(Boolean);
 const grants=crearGrantsV2({db,identidad,contactos});
+const catalogo=crearGestionCatalogo({db});
 const compradoresWS=crearCanalCompradores({WebSocketServer,identidad,grants,origen});
 let envioListaEnCurso=false;
 server.on("upgrade",(req,socket,head)=>{
@@ -507,10 +509,52 @@ app.get("/api/admin/contactos",http.admin,(req,res)=>{
 });
 app.get("/api/productos",http.admin,async(req,res)=>{
   try {
-    const q=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
-    res.json(q.rows);
+    res.json(await catalogo.listar());
   } catch(error){resultadoPublico(res,error);}
 });
+
+function errorCatalogo(res,error){
+  const codigo=String(error?.message||"");
+  if(["HS_CATALOGO_NOMBRE_INVALIDO","HS_CATALOGO_CATEGORIA_INVALIDO",
+      "HS_CATALOGO_ID_INVALIDO"].includes(codigo))
+    return res.status(400).json({error:codigo});
+  if(["HS_CATALOGO_DUPLICADO","HS_CATALOGO_COMPRA_ACTIVA",
+      "HS_CATALOGO_CAMBIO_CONCURRENTE"].includes(codigo))
+    return res.status(409).json({error:codigo});
+  if(["HS_CATALOGO_NO_ENCONTRADO","HS_CATALOGO_NO_ARCHIVADO"].includes(codigo))
+    return res.status(404).json({error:codigo});
+  console.error("HogarStock: operacion catalogo no confirmada.");
+  return res.status(503).json({error:"HS_CATALOGO_ERROR"});
+}
+async function ejecutarCambioCatalogo(res,accion){
+  let resultado;
+  try{resultado=await accion();}
+  catch(error){return errorCatalogo(res,error);}
+  // La escritura ya se confirmo: un error de notificacion no debe provocar
+  // una respuesta falsa de fallo ni inducir un reintento duplicado.
+  try{
+    broadcast({type:"update",productos:await catalogo.listar()});
+  }catch(_){console.error("HogarStock: actualizar la pantalla tras cambio de catalogo fallo.");}
+  return res.json({ok:true,...resultado});
+}
+app.post("/api/admin/catalogo/crear",http.adminWrite,(req,res)=>
+  ejecutarCambioCatalogo(res,()=>catalogo.crear(req.body)));
+app.post("/api/admin/catalogo/editar",http.adminWrite,(req,res)=>
+  ejecutarCambioCatalogo(res,()=>catalogo.editar(req.body)));
+app.post("/api/admin/catalogo/archivar",http.adminWrite,(req,res)=>
+  ejecutarCambioCatalogo(res,()=>catalogo.archivar(req.body)));
+app.get("/api/admin/catalogo/archivados",http.admin,async(req,res)=>{
+  try{
+    res.setHeader("Cache-Control","no-store");
+    res.json(await catalogo.listarArchivados());
+  }catch(_){
+    console.error("HogarStock: consulta archivados no disponible.");
+    res.status(503).json({error:"HS_CATALOGO_ERROR"});
+  }
+});
+app.post("/api/admin/catalogo/recuperar",http.adminWrite,(req,res)=>
+  ejecutarCambioCatalogo(res,()=>catalogo.recuperar(req.body)));
+
 app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
   res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
@@ -550,12 +594,17 @@ app.post("/api/agotar/:id",http.adminWrite,async(req,res)=>{
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID_INVALIDO"});
-    const cambio=await grants.alternarProducto({productoId:id});
-    const productos=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
-    broadcast({type:"update",productos:productos.rows}); // WS SOLO admin
+    const cambio=await grants.alternarProducto({
+      productoId:id,verificarActivo:catalogo.verificarActivo
+    });
+    broadcast({type:"update",productos:await catalogo.listar()}); // WS SOLO admin
     if(cambio.compraId)compradoresWS.notificar({compraId:cambio.compraId});
     res.json({ok:true,nuevoEstado:cambio.nuevoEstado,compraActiva:cambio.compraActiva});
-  }catch(error){resultadoPublico(res,error);}
+  }catch(error){
+    if(String(error?.message||"")==="HS_CATALOGO_NO_ENCONTRADO")
+      return res.status(404).json({error:"PRODUCTO_ARCHIVADO_O_INEXISTENTE"});
+    resultadoPublico(res,error);
+  }
 });
 app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
   if(!whatsappConectado||!sock)return res.status(503).json({error:"WHATSAPP_NO_CONECTADO"});
@@ -646,8 +695,7 @@ app.post("/api/comprado/:id",http.compradorWrite,async(req,res)=>{
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"ID_INVALIDO"});
     const resultado=await grants.marcar({grant:req.hsCompra,productoId:id});
     const lista=await grants.listar({grant:req.hsCompra});
-    const actualizados=await db.execute("SELECT id,nombre,categoria,agotado FROM productos ORDER BY categoria,nombre");
-    broadcast({type:"update",productos:actualizados.rows});
+    broadcast({type:"update",productos:await catalogo.listar()});
     compradoresWS.notificar({compraId:req.hsCompra.idCompra});
     res.json({ok:true,yaRegistrado:resultado.yaRegistrado,
       faltan:lista.filter(x=>x.agotado).length});
@@ -690,6 +738,7 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
     await initDB();
     await almacenAdmin.init();
     await grants.init();
+    await catalogo.init();
     const puerto = process.env.PORT || 3000;
     server.listen(puerto, soloLaboratorio ? "127.0.0.1" : undefined, () => {
       console.log(

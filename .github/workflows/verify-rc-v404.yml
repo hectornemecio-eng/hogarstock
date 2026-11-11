@@ -1,0 +1,39 @@
+name: HogarStock v4.04 - CI candidata limpia
+on:
+  push:
+    branches: [rc-v404-catalogo-2026-11-11]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Comprobar sintaxis
+        run: |
+          node --check server.js
+          node --check catalogo/gestion-v404.js
+          node --check security/v2-grants.js
+      - name: Regresiones y catalogo
+        run: node --test tests/*.test.js
+      - name: Validar candidata sin archivos de laboratorio
+        run: |
+          test ! -f lab/start-local-v404.js
+          test ! -f INICIAR_LAB_HOGARSTOCK.cmd
+          test ! -f .env
+          test ! -f auth.json
+          test ! -f respaldo.hsbk
+          test ! -f claves.hskeys
+          ! grep -q 'ES_LAB_LOCAL' security/v2-identity.js
+          ! grep -q 'labLocal=' security/v2-http.js
+          ! grep -q 'modoLaboratorio' public/index.html
+          ! grep -q 'origenLocal=' server.js

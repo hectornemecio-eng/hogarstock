@@ -561,3 +561,10 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
 .page-admin .backup-panel #backupEstado{font-weight:650}
 .page-admin .backup-panel #backupEstado.err{color:var(--error)}
 .page-admin .backup-panel #backupEstado.ok{color:#17613f}
+
+/* v4.04 - controles de catalogo accesibles y compactos */
+.catalog-panel select,.catalog-panel input{width:100%;max-width:100%;box-sizing:border-box}
+.catalog-panel form+form{margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border,#ddd)}
+.catalog-panel form button{margin-top:.6rem}
+.catalog-panel #btnCatalogoArchivar{margin-left:.4rem}
+.catalog-panel #catalogoEstado:not(:empty){margin-top:.6rem}
