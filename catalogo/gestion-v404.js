@@ -1,6 +1,8 @@
 "use strict";
 // v4.04: gestion del catalogo. Nunca elimina productos fisicamente.
 const {ordenarProductos}=require("./categorias-v406");
+const {SPLITS}=require("./ajustes-v407");
+const ALIAS_NOMBRES=new Map(SPLITS.map(x=>[x.origen,x.destinos[0]]));
 const TABLA = "hs_catalogo_archivados";
 const LISTA = "SELECT p.id,p.nombre,p.categoria,p.agotado FROM productos p " +
   "WHERE NOT EXISTS (SELECT 1 FROM "+TABLA+" a WHERE a.producto_id=p.id) " +
@@ -32,7 +34,8 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
   async function listar() {
     exigirInit();
     const r=await db.execute(LISTA);
-    return ordenarProductos(r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
+    return ordenarProductos(r.rows.map(x=>({id:Number(x.id),
+      nombre:ALIAS_NOMBRES.get(String(x.nombre))||String(x.nombre),
       categoria:String(x.categoria),agotado:Number(x.agotado)})));
   }
   async function txWrite(fn) {
@@ -54,6 +57,16 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
       "AND NOT EXISTS(SELECT 1 FROM "+TABLA+" a WHERE a.producto_id=p.id) LIMIT 1",
       args:[nombre,categoria,excepto]});
     if(r.rows.length)throw Error("HS_CATALOGO_DUPLICADO");
+    // Los alias de la etapa activa también son nombres ocupados a ojos del usuario.
+    const origen=SPLITS.find(x=>x.destinos[0].toLocaleLowerCase("es")===
+      nombre.toLocaleLowerCase("es"))?.origen;
+    if(origen){
+      const mismo=await tx.execute({sql:
+        "SELECT p.id FROM productos p WHERE lower(p.nombre)=lower(?) AND p.id<>? "+
+        "AND NOT EXISTS(SELECT 1 FROM "+TABLA+" a WHERE a.producto_id=p.id) LIMIT 1",
+        args:[origen,excepto]});
+      if(mismo.rows.length)throw Error("HS_CATALOGO_DUPLICADO");
+    }
   }
   async function activo(tx,id) {
     const r=await tx.execute({sql:

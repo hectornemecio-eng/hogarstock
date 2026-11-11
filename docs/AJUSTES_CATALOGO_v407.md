@@ -25,3 +25,16 @@ No hay modificaciones del motor WhatsApp, credenciales, proveedores, tareas ping
 
 ## Revisión de bloqueo por compra abierta (producción)
 La primera publicación de v4.07 se aplazó en Render por existir una compra abierta. El control global es más restrictivo que la política existente de edición: una compra que no contiene los cuatro artículos a renombrar NO debe bloquear los cambios. Se limita el guard a los productos concretos vinculados a una compra activa; otras compras permanecen intactas. Un nuevo producto empieza disponible y no aparece automáticamente en la compra abierta. Si hay uno de los cuatro productos dentro de una compra abierta, se mantiene el aplazamiento y reintento automático.
+
+## Corrección de desbloqueo operativo (11/11/2026)
+
+Confirmado en Render: una de las cuatro referencias figura en una compra vigente. No se deben cambiar nombres en esa lista, pero el bloqueo total impide utilizar once artículos no vinculados.
+
+**Ejecución por etapas, sin intervención local:**
+1. Con la compra abierta, insertar inmediatamente los cuatro segundos artículos y los siete nuevos, en una transacción única. Registrar esta etapa con `version=catalogo_v407_20261111_altas`, una única vez.
+2. En el inventario administrativo, mostrar el nombre nuevo para las cuatro referencias antiguas sin cambiar su ID ni su valor `agotado`. Esta proyección no cambia el nombre almacenado de un producto incluido en la compra, por lo que comprador y resumen final seguirán viendo el nombre con el que se creó la lista.
+3. Tras finalizar/expirar la compra, renombrar realmente los cuatro productos en una transacción auditada, sin volver a insertar artículos ya creados. Una compra no vinculada a ninguno de esos cuatro productos no impide el paso 3.
+
+Una compra nueva creada después de la etapa, antes del paso 3, que incluya alguna referencia con nombre antiguo continuará apareciendo con su nombre histórico hasta que esa nueva compra termine. La migración final sigue diferida. Esto evita incoherencias con listas de compra.
+
+Pruebas de etapas idempotentes, conservación de ID/estado, guard de compra, duplicados por alias, cierre y confirmación. Las etiquetas administrativas podrían diferir temporalmente de las compartidas (intencionalmente, preservación de la lista).

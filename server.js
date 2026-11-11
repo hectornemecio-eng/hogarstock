@@ -767,7 +767,10 @@ app.post("/api/finalizar-compra",http.compradorWrite,async(req,res)=>{
       try{
         const resultado=await revisionCatalogo.aplicar();
         if(resultado.aplazado){
-          console.log("Catálogo v4.07: aplazado por compra activa.");
+          console.log("Catálogo v4.07: "+JSON.stringify(resultado));
+          if(resultado.etapaAplicada){
+            try{broadcast({type:"update",productos:await catalogo.listar()});}catch(_){}
+          }
         }else{
           revisionPendiente=false;
           console.log("Catálogo v4.07: "+JSON.stringify(resultado));
