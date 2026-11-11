@@ -32,3 +32,10 @@ No se envían WhatsApps reales. No se toca Turso real, Render ni `main`.
 - Todos los ensayos usan datos ficticios en GitHub Actions; la versión v4.04 en producción sigue intacta.
 
 Criterio de uso: el indicador de conexión muestra solo estado del socket; **no** acredita la entrega de mensajes ni confirma la sincronización de todas las claves Signal. No revincular por un código 500: un 401 exige diagnóstico independiente.
+
+## Tercer bloque: observabilidad segura de claves WhatsApp
+- Tras comprobar fallos reales de `failed to commit mutations` y `Failed to check/upload pre-keys` en Render, se añade supervisión agregada de operaciones de persistencia: `lectura`, `escritura` y `credenciales`, sin guardar valores de claves, teléfonos, SQL, payloads ni mensajes de error libres.
+- Se publica el resumen exclusivamente a través de `/api/whatsapp-status` protegido para administradores. La advertencia del panel distingue errores detectados en el almacén de las desconexiones del socket.
+- **No se introducen reintentos automáticos de escrituras**, reparaciones de claves, borrados o revinculaciones: el origen exacto de los errores de Baileys no está demostrado. Cuando se despliegue v4.05, los indicadores permitirán distinguir si falló el adaptador libSQL.
+- Los ensayos simulan fallos en operaciones cifradas y verifican que un diagnóstico no cambia el resultado de la operación ni revela datos sensibles.
+- Las 44 comprobaciones superadas anteriormente no demuestran la salud de las claves Signal ni resuelven por sí solas los fallos de inicialización. Este bloque agrega instrumentos para diagnóstico.

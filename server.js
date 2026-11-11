@@ -16,6 +16,7 @@ const {crearLeaseWa}=require("./whatsapp/wa-lease");
 const {permitirVinculacionNueva}=require("./whatsapp/wa-pairing-policy");
 const {prepararNuevaVinculacion}=require("./whatsapp/wa-relink");
 const {crearEstabilidadWA}=require("./whatsapp/wa-stability");
+const {crearMonitorPersistenciaWa}=require("./whatsapp/wa-persistence-monitor");
 
 let makeWASocket;
 let initAuthCreds;
@@ -121,6 +122,7 @@ let waLeaseRenovando = false;
 let waResetInProgress = false;
 let waCredencialesPendientes = Promise.resolve();
 const estabilidadWA=crearEstabilidadWA();
+const persistenciaWA=crearMonitorPersistenciaWa();
 
 function bloquearPorPerdidaDeLease() {
   if (waLeasePerdido) return;
@@ -236,6 +238,7 @@ async function iniciarWhatsApp() {
       lease,
       claveHex: process.env.HS_WA_AUTH_ENC_KEY,
       permitirAltaNueva: permitirVinculacionNueva(process.env),
+      monitor: persistenciaWA,
       baileys: {initAuthCreds, BufferJSON, proto}
     }).abrir();
 
@@ -563,6 +566,7 @@ app.get("/api/whatsapp-status",http.admin,(req,res)=>{
   res.setHeader("Cache-Control","no-store");
   res.json({conectado:whatsappConectado,qr:qrActual,error:errorWhatsApp?"FALLO_CONEXION":null,
     diagnostico:estabilidadWA.estado({conectado:whatsappConectado}),
+    persistencia:persistenciaWA.estado(),
     requiereRevinculacion:!whatsappConectado && !sock &&
       typeof errorWhatsApp==="string" && errorWhatsApp.includes("codigo 401")});
 });

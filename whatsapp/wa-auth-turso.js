@@ -1,25 +1,34 @@
 "use strict";
 // Almacén autenticación Baileys para SQLite/libSQL.
-// Exclusivamente candidato privado hasta validar integración y migración real.
+// Sesión cifrada de producción. Los diagnósticos no contienen claves ni datos personales.
 const crypto = require("node:crypto");
 const TABLE = "hs_v2_wa_auth_encrypted";
 const MAX_KEY_ID = 512;
 const MAX_RECORD_BYTES = 1024 * 1024;
 const MAX_BATCH = 300;
 
-function crearAuthTurso({db, claveHex, baileys, reloj = Date.now, permitirAltaNueva = false, lease = null} = {}) {
+function crearAuthTurso({db, claveHex, baileys, reloj = Date.now,
+  permitirAltaNueva = false, lease = null, monitor = null} = {}) {
   if (!db || typeof db.execute !== "function" || typeof db.batch !== "function" ||
       !baileys || typeof baileys.initAuthCreds !== "function" ||
       typeof baileys.BufferJSON?.replacer !== "function" ||
       typeof baileys.BufferJSON?.reviver !== "function" ||
       !/^[a-f0-9]{64}$/i.test(String(claveHex || "")) ||
       typeof reloj !== "function" || typeof permitirAltaNueva !== "boolean" ||
-      (lease !== null && (typeof lease.verificar !== "function" || typeof lease.condicion !== "function"))) {
+      (lease !== null && (typeof lease.verificar !== "function" || typeof lease.condicion !== "function")) ||
+      (monitor !== null && (typeof monitor.registrarError !== "function" ||
+        typeof monitor.registrarExito !== "function"))) {
     throw Error("HS_WA_AUTH_CONFIG_INVALIDA");
   }
   const llave = Buffer.from(claveHex, "hex");
   const reviver = baileys.BufferJSON.reviver;
   const replacer = baileys.BufferJSON.replacer;
+  function registrarFallo(etapa,error){
+    try{monitor?.registrarError(etapa,error);}catch(_){}
+  }
+  function registrarExito(etapa){
+    try{monitor?.registrarExito(etapa);}catch(_){}
+  }
   function validarId(id) {
     if (typeof id !== "string" || !id || id.length > MAX_KEY_ID || /[\r\n\x00]/.test(id))
       throw Error("HS_WA_AUTH_ID_INVALIDO");
@@ -88,20 +97,27 @@ function crearAuthTurso({db, claveHex, baileys, reloj = Date.now, permitirAltaNu
   }
   function assertInit() {if (!initialized) throw Error("HS_WA_AUTH_NO_INICIALIZADO");}
   async function readRecord(id) {
-    assertInit();
-    await verificarLease();
-    const result = await db.execute({
-      sql: `SELECT payload FROM ${TABLE} WHERE id=? LIMIT 1`, args: [validarId(id)]
-    });
-    return result.rows.length ? descifrar(id, String(result.rows[0].payload)) : null;
+    try {
+      assertInit();
+      await verificarLease();
+      const result = await db.execute({
+        sql: `SELECT payload FROM ${TABLE} WHERE id=? LIMIT 1`, args: [validarId(id)]
+      });
+      const valor=result.rows.length?descifrar(id,String(result.rows[0].payload)):null;
+      registrarExito("lectura");
+      return valor;
+    }catch(error){registrarFallo("lectura",error);throw error;}
   }
   async function saveRecord(id, value) {
-    assertInit();
-    const encrypted = cifrar(id, value);
-    await verificarLease();
-    const respuesta = await db.execute(guardarSql(id, encrypted, reloj()));
-    if (lease && Number(respuesta.rowsAffected) !== 1) throw Error("HS_WA_LEASE_PERDIDO");
-    return respuesta;
+    try {
+      assertInit();
+      const encrypted = cifrar(id, value);
+      await verificarLease();
+      const respuesta = await db.execute(guardarSql(id, encrypted, reloj()));
+      if (lease && Number(respuesta.rowsAffected) !== 1) throw Error("HS_WA_LEASE_PERDIDO");
+      registrarExito("credenciales");
+      return respuesta;
+    }catch(error){registrarFallo("credenciales",error);throw error;}
   }
   async function abrir() {
     await verificarLease();
@@ -123,28 +139,32 @@ function crearAuthTurso({db, claveHex, baileys, reloj = Date.now, permitirAltaNu
       creds,
       keys: {
         async get(type, ids) {
-          assertInit();
-          await verificarLease();
-          if (typeof type !== "string" || !Array.isArray(ids) || ids.length > MAX_BATCH)
-            throw Error("HS_WA_AUTH_GET_INVALIDO");
-          const result = {};
-          if (!ids.length) return result;
-          const keys = ids.map(id => validarId(type + ":" + id));
-          const sql = `SELECT id,payload FROM ${TABLE} WHERE id IN (`+
-            keys.map(() => "?").join(",")+")";
-          const r = await db.execute({sql,args:keys});
-          for (const row of r.rows) {
-            const id = String(row.id);
-            const value = descifrar(id, String(row.payload));
-            const name = id.slice(type.length + 1);
-            result[name] = type === "app-state-sync-key" &&
-              baileys.proto?.Message?.AppStateSyncKeyData?.fromObject
-              ? baileys.proto.Message.AppStateSyncKeyData.fromObject(value)
-              : value;
-          }
-          return result;
+          try {
+            assertInit();
+            await verificarLease();
+            if (typeof type !== "string" || !Array.isArray(ids) || ids.length > MAX_BATCH)
+              throw Error("HS_WA_AUTH_GET_INVALIDO");
+            const result = {};
+            if (!ids.length) return result;
+            const keys = ids.map(id => validarId(type + ":" + id));
+            const sql = `SELECT id,payload FROM ${TABLE} WHERE id IN (`+
+              keys.map(() => "?").join(",")+")";
+            const r = await db.execute({sql,args:keys});
+            for (const row of r.rows) {
+              const id = String(row.id);
+              const value = descifrar(id, String(row.payload));
+              const name = id.slice(type.length + 1);
+              result[name] = type === "app-state-sync-key" &&
+                baileys.proto?.Message?.AppStateSyncKeyData?.fromObject
+                ? baileys.proto.Message.AppStateSyncKeyData.fromObject(value)
+                : value;
+            }
+            registrarExito("lectura");
+            return result;
+          }catch(error){registrarFallo("lectura",error);throw error;}
         },
         async set(data) {
+          try {
           assertInit();
           await verificarLease();
           if (!data || typeof data !== "object") throw Error("HS_WA_AUTH_SET_INVALIDO");
@@ -172,7 +192,9 @@ function crearAuthTurso({db, claveHex, baileys, reloj = Date.now, permitirAltaNu
             if (lease && (!Array.isArray(resultados) || resultados.length !== statements.length ||
               resultados.some((r,i)=>statements[i].sql.startsWith("INSERT") && Number(r.rowsAffected)!==1)))
               throw Error("HS_WA_LEASE_PERDIDO");
+            registrarExito("escritura");
           }
+          }catch(error){registrarFallo("escritura",error);throw error;}
         }
       }
     };

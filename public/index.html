@@ -622,10 +622,13 @@
           data.requiereRevinculacion ? "block" : "none";
         if (data.conectado) {
           const reconexiones=data.diagnostico?.inestable===true;
-          el.className = "wa-status "+(reconexiones?"wa-off":"wa-on");
-          el.innerHTML = reconexiones
-            ? '<div class="dot"></div> WhatsApp: Conectado, con reconexiones recientes ⚠️'
-            : '<div class="dot"></div> WhatsApp: Conectado ✅';
+          const fallosAlmacen=Number(data.persistencia?.fallosRecientes||0)>0;
+          el.className = "wa-status "+((reconexiones||fallosAlmacen)?"wa-off":"wa-on");
+          el.innerHTML = fallosAlmacen
+            ? '<div class="dot"></div> WhatsApp: Conectado; errores recientes al almacenar claves ⚠️'
+            : reconexiones
+              ? '<div class="dot"></div> WhatsApp: Conectado, con reconexiones recientes ⚠️'
+              : '<div class="dot"></div> WhatsApp: Conectado ✅';
           modal.style.display = "none";
           ultimoQR = null;
           document.getElementById("qrcode").replaceChildren();
