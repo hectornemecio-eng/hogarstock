@@ -22,3 +22,6 @@ Desdoblar cuatro productos y añadir siete. Nombres exactos:
 ## Límites
 Se conserva el historial vinculado al ID, aunque una consulta histórica por ese ID mostrará el nombre actualizado. El registro auxiliar guarda su nombre anterior.
 No hay modificaciones del motor WhatsApp, credenciales, proveedores, tareas ping ni interfaz ajena al catálogo.
+
+## Revisión de bloqueo por compra abierta (producción)
+La primera publicación de v4.07 se aplazó en Render por existir una compra abierta. El control global es más restrictivo que la política existente de edición: una compra que no contiene los cuatro artículos a renombrar NO debe bloquear los cambios. Se limita el guard a los productos concretos vinculados a una compra activa; otras compras permanecen intactas. Un nuevo producto empieza disponible y no aparece automáticamente en la compra abierta. Si hay uno de los cuatro productos dentro de una compra abierta, se mantiene el aplazamiento y reintento automático.
