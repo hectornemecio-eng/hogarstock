@@ -2,11 +2,15 @@
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
+const os=require("node:os");
+const path=require("node:path");
+const crypto=require("node:crypto");
 const {createClient}=require("@libsql/client");
 const {crearGestionCatalogo}=require("../catalogo/gestion-v404");
 
 async function laboratorio(fn){
-  const db=createClient({url:"file::memory:"});
+  const nombre=path.join(os.tmpdir(),"hogarstock-v404-"+process.pid+"-"+crypto.randomBytes(6).toString("hex")+".sqlite");
+  const db=createClient({url:"file:"+nombre});
   try{
     await db.execute("CREATE TABLE productos(id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,categoria TEXT NOT NULL,agotado INTEGER DEFAULT 0)");
     await db.execute("CREATE TABLE hs_v2_security_grants(compra_id TEXT PRIMARY KEY,estado TEXT,expira INTEGER)");
@@ -14,7 +18,10 @@ async function laboratorio(fn){
     const catalogo=crearGestionCatalogo({db});
     await catalogo.init();
     await fn({db,catalogo});
-  }finally{db.close();}
+  }finally{
+    db.close();
+    for(const f of [nombre,nombre+"-wal",nombre+"-shm"]){try{fs.unlinkSync(f);}catch(_){}}
+  }
 }
 test("v4.04: alta, edicion, deteccion duplicados y validacion estricta",async()=>{
   await laboratorio(async({db,catalogo})=>{
