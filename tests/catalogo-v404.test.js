@@ -23,7 +23,7 @@ test("v4.04: alta, edicion, deteccion duplicados y validacion estricta",async()=
     assert.equal((await catalogo.listar()).length,1);
     await assert.rejects(catalogo.crear({nombre:"leche sin lactosa",categoria:"lácteos"}),/HS_CATALOGO_DUPLICADO/);
     await assert.rejects(catalogo.crear({nombre:"",categoria:"Lácteos"}),/HS_CATALOGO_NOMBRE_INVALIDO/);
-    await assert.rejects(catalogo.crear({nombre:"X",categoria:"\\n"}),/HS_CATALOGO_CATEGORIA_INVALIDO/);
+    await assert.rejects(catalogo.crear({nombre:"X",categoria:"\n"}),/HS_CATALOGO_CATEGORIA_INVALIDO/);
     await catalogo.editar({id:primero.id,nombre:"Leche",categoria:"Despensa"});
     const p=(await catalogo.listar())[0];
     assert.equal(p.nombre,"Leche");
