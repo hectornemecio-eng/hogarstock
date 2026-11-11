@@ -1,0 +1,33 @@
+name: HogarStock v4.04 - catalogo aislado y regresiones
+on:
+  push:
+    branches: [feat-gestion-catalogo-v404-2026-11-11]
+permissions:
+  contents: read
+jobs:
+  validacion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sin scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxis
+        run: |
+          node --check server.js
+          node --check catalogo/gestion-v404.js
+          node --check tests/catalogo-v404.test.js
+      - name: Pruebas de catalogo y regresiones
+        run: node --test tests/*.test.js
+      - name: Excluir configuracion privada y respaldos
+        run: |
+          test ! -f .env
+          test ! -f auth.json
+          test ! -f respaldo.hsbk
+          test ! -f claves.hskeys
