@@ -49,9 +49,12 @@ test("v4.04: archivado logico preserva filas y bloquea editar/archivar activo",a
     await assert.rejects(catalogo.archivar({id:p.id}),/HS_CATALOGO_COMPRA_ACTIVA/);
     assert.equal((await catalogo.listar()).length,1);
     await db.execute("UPDATE hs_v2_security_grants SET estado='finalizada'");
+    await db.execute({sql:"UPDATE productos SET agotado=1 WHERE id=?",args:[p.id]});
     await catalogo.archivar({id:p.id});
     assert.equal((await catalogo.listar()).length,0);
     assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM productos")).rows[0].n),1);
+    assert.equal(Number((await db.execute({sql:"SELECT agotado FROM productos WHERE id=?",args:[p.id]})).rows[0].agotado),0);
+    assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM productos WHERE agotado=1")).rows[0].n),0);
     assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM hs_v2_security_items")).rows[0].n),1);
     await assert.rejects(catalogo.archivar({id:p.id}),/HS_CATALOGO_NO_ENCONTRADO/);
   });
