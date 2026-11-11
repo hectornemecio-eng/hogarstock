@@ -27,7 +27,8 @@ test("Reenvío WhatsApp: omitir por defecto y reenviar solo por petición explí
         compraId:"a".repeat(48),nueva:false,token:"token_de_prueba",
         nombres:["Peras"],cantidad:1
       }),
-      yaEnviado:async({telefono})=>enviadosPrevios.has(telefono),
+      estadoEnvio:async({telefono})=>enviadosPrevios.has(telefono)?"confirmado":"nuevo",
+      prepararIntentoEnvio:async()=>true,
       registrarEnviado:async({telefono})=>{enviadosPrevios.add(telefono);return true}
     },
     enviarWhatsApp:async(numero,mensaje)=>{

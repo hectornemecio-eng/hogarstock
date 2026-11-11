@@ -804,8 +804,12 @@
           document.getElementById("permitirReenvio").checked=false;
         }else{
           est.className="err";
-          est.textContent="No se pudo confirmar el envio: "+(d.error||"ERROR")+
-            ". Comprueba el telefono antes de reintentar.";
+          const incertidumbre=Array.isArray(d.inciertos)&&d.inciertos.length>0;
+          est.textContent=incertidumbre
+            ? "Algunos envíos tienen resultado incierto ("+d.inciertos.length+
+              "). Comprueba WhatsApp. Para repetirlos, selecciona «Reenviar la invitación»."
+            : "No se pudo confirmar el envio: "+(d.error||"ERROR")+
+              ". Comprueba el telefono antes de reintentar.";
         }
       }catch(_){est.className="err";est.textContent="Error de conexión. Comprueba si llegó antes de reintentar.";}
       finally{envioActivo=false;actualizarBotonEnviar();}

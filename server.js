@@ -623,28 +623,36 @@ app.post("/api/iniciar-compra",http.adminWrite,async(req,res)=>{
     const enviados=[],reenviados=[],yaEnviados=[],fallidos=[],inciertos=[];
     for(let i=0;i<destinos.length;i++){
       const numero=destinos[i],esOriginalNueva=compra.nueva && i===0;
-      // Por defecto, no duplicar. Reenvío solo cuando lo pide expresamente admin.
-      const registrado=!esOriginalNueva &&
-        await grants.yaEnviado({compraId:compra.compraId,telefono:numero});
-      if(registrado && !reenviar){
+      const estado=esOriginalNueva?"incierto":await grants.estadoEnvio({
+        compraId:compra.compraId,telefono:numero
+      });
+      if(estado==="confirmado" && !reenviar){
         yaEnviados.push(numero);
         continue;
+      }
+      if(estado==="incierto" && !esOriginalNueva && !reenviar){
+        // Ya pudo enviarse antes de un reinicio; no duplicar automáticamente.
+        inciertos.push(numero);
+        continue;
+      }
+      if(!esOriginalNueva && estado!=="confirmado"){
+        // Primer destinatario nuevo queda marcado al crear la compra.
+        await grants.prepararIntentoEnvio({compraId:compra.compraId,telefono:numero});
       }
       try {await enviarWhatsApp(numero,mensaje);}
       catch(_){
         fallidos.push(numero);
         if(esOriginalNueva){
-          // Si falla el primer envio no dejar una nueva compra inutilizable.
           try{await grants.revocar({compraId:compra.compraId});}catch(_){}
           return res.status(503).json({ok:false,error:"ENVIO_INICIAL_NO_CONFIRMADO",fallidos});
         }
-        continue; // nunca reintentos automaticos de WhatsApp
+        continue;
       }
-      if(!esOriginalNueva && !registrado){
-        try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
-        catch(_){inciertos.push(numero);continue;}
-      }
-      if(registrado)reenviados.push(numero);
+      // Confirmar TAMBIÉN al primer destinatario; si falla este registro,
+      // no revocar un enlace que el proveedor pudo haber enviado.
+      try{await grants.registrarEnviado({compraId:compra.compraId,telefono:numero});}
+      catch(_){inciertos.push(numero);continue;}
+      if(estado==="confirmado")reenviados.push(numero);
       else enviados.push(numero);
     }
     const ok=enviados.length>0||reenviados.length>0||yaEnviados.length>0;
