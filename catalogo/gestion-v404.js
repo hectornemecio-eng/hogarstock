@@ -1,5 +1,6 @@
 "use strict";
 // v4.04: gestion del catalogo. Nunca elimina productos fisicamente.
+const {ordenarProductos}=require("./categorias-v406");
 const TABLA = "hs_catalogo_archivados";
 const LISTA = "SELECT p.id,p.nombre,p.categoria,p.agotado FROM productos p " +
   "WHERE NOT EXISTS (SELECT 1 FROM "+TABLA+" a WHERE a.producto_id=p.id) " +
@@ -31,8 +32,8 @@ function crearGestionCatalogo({db,reloj=Date.now}={}) {
   async function listar() {
     exigirInit();
     const r=await db.execute(LISTA);
-    return r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
-      categoria:String(x.categoria),agotado:Number(x.agotado)}));
+    return ordenarProductos(r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
+      categoria:String(x.categoria),agotado:Number(x.agotado)})));
   }
   async function txWrite(fn) {
     exigirInit();

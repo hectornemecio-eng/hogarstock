@@ -1,4 +1,5 @@
 "use strict";
+const {ordenarProductos}=require("../catalogo/categorias-v406");
 // Laboratorio: grants de comprador persistidos en SQLite/libSQL separado.
 // NO ejecutar init() en la base real sin backup, migración y autorización S/N.
 const crypto = require("node:crypto");
@@ -199,8 +200,8 @@ function crearGrantsV2({db,identidad,contactos=[],reloj=Date.now}={}) {
       ` FROM ${ITEMS} gi JOIN productos p ON p.id=gi.producto_id`+
       ` WHERE gi.compra_id=? ORDER BY p.categoria,p.nombre,p.id`,
       args:[grant.idCompra]});
-    return r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
-      categoria:String(x.categoria),agotado:String(x.compra_estado)==="pendiente"&&Number(x.agotado)===1}));
+    return ordenarProductos(r.rows.map(x=>({id:Number(x.id),nombre:String(x.nombre),
+      categoria:String(x.categoria),agotado:String(x.compra_estado)==="pendiente"&&Number(x.agotado)===1})));
   }
   async function marcar({grant,productoId}={}) {
     exigirInit();
