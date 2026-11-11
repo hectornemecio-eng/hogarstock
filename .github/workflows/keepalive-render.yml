@@ -1,0 +1,46 @@
+# HogarStock - conservar Render activo sin PC ni coste adicional
+name: HogarStock - ping Render (gratis)
+
+on:
+  schedule:
+    # Cada 10 minutos en UTC. Evitar minuto 0 reduce retrasos de GitHub.
+    - cron: "7,17,27,37,47,57 * * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/keepalive-render.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/keepalive-render.yml"
+
+permissions: {}
+
+concurrency:
+  group: hogarstock-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Comprobar respuesta HTTP publica
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Solicitud HEAD a la pantalla publica
+        env:
+          URL: https://hogarstock.onrender.com/admin-login.html
+        shell: bash
+        run: |
+          set -euo pipefail
+          # HEAD: sin descargar HTML, sin autenticacion, sin Turso y sin WhatsApp.
+          # Reintentar solo ante error temporal del arranque.
+          codigo="$(curl --silent --show-error --location --head \
+            --max-time 100 --connect-timeout 15 \
+            --retry 1 --retry-delay 5 --retry-all-errors \
+            --output /dev/null --write-out '%{http_code}' "$URL")"
+          echo "HogarStock status HTTP: $codigo"
+          if [[ "$codigo" != "200" ]]; then
+            echo "::error::No se obtuvo HTTP 200 en la pantalla de acceso."
+            exit 1
+          fi
