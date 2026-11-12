@@ -7,6 +7,7 @@ const { db, initDB } = require("./db");
 const {crearIdentidadV2}=require("./security/v2-identity");
 const {crearAlmacenClaveAdmin}=require("./security/v2-password-store");
 const {crearRespaldoCifrado}=require("./backup/backup-safe");
+const {LIMITE_WEB,verificarArchivoDescargado}=require("./backup/verificar-v410");
 const {crearGestionCatalogo}=require("./catalogo/gestion-v404");
 const {crearRevisionCatalogo}=require("./catalogo/ajustes-v407");
 const {crearHTTPV2}=require("./security/v2-http");
@@ -495,6 +496,30 @@ app.post("/api/admin/respaldo",http.adminWrite,async(req,res)=>{
     console.error("HogarStock: no se pudo verificar el respaldo.");
     return res.status(503).json({error:"RESPALDO_NO_CONFIRMADO"});
   }finally{respaldoEnCurso=false;}
+});
+// v4.10: subir copia ya cifrada únicamente para DESCIFRARLA en el mismo servicio
+// y comprobar restauración SQLite EN MEMORIA. No se escribe ninguna base remota.
+// La sesión/CSRF se validan ANTES de leer hasta 8 MiB de datos sensibles.
+let verificacionRespaldoEnCurso=false;
+app.post("/api/admin/respaldo/verificar",http.adminWrite,
+  express.raw({type:"application/octet-stream",limit:"8mb"}),async(req,res)=>{
+  if(!Buffer.isBuffer(req.body)||req.body.length<55||req.body.length>LIMITE_WEB)
+    return res.status(400).json({error:"HS_VERIFY_ARCHIVO_INVALIDO"});
+  if(verificacionRespaldoEnCurso)
+    return res.status(429).json({error:"HS_VERIFY_OCUPADO"});
+  verificacionRespaldoEnCurso=true;
+  try {
+    const resultado=await verificarArchivoDescargado(req.body);
+    res.setHeader("Cache-Control","no-store");
+    return res.json({ok:true,...resultado});
+  }catch(_){
+    // No registrar contraseña, archivo, nombres de productos ni datos privados.
+    return res.status(400).json({error:"HS_VERIFY_ARCHIVO_O_CLAVE_INVALIDOS"});
+  }finally{
+    // Minimizar permanencia del contenido confidencial en buffers de solicitud.
+    req.body.fill(0);
+    verificacionRespaldoEnCurso=false;
+  }
 });
 app.get("/api/admin/contactos",http.admin,(req,res)=>{
   // Los nombres solo están en el entorno privado de Render, nunca en el repositorio.

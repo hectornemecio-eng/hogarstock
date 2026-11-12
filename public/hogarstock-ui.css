@@ -648,3 +648,16 @@ button:focus-visible,input:focus-visible,[role="button"]:focus-visible{
   .page-admin .product-delete{flex-basis:44px;min-height:58px}
   .page-admin .product-card{min-height:58px}
 }
+
+/* v4.10: backup con dos pasos claros y verificación segura de fichero descargado. */
+.page-admin .backup-verify-form{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.page-admin .backup-verify-form h3{font-size:.91rem;margin:0 0 8px;color:var(--ink)}
+.page-admin .backup-verify-form input[type=file]{cursor:pointer}
+.page-admin .backup-verify-result{padding:10px 12px;margin:9px 0;background:#edf8f1;
+  border:1px solid #c8e7d2;border-radius:10px;overflow-wrap:anywhere}
+.page-admin .backup-verify-result[hidden]{display:none!important}
+.page-admin .backup-verify-result p{font-size:.76rem;line-height:1.45;margin:3px 0;color:#195b44}
+.page-admin #backupVerifyEstado{font-weight:650}
+.page-admin #backupVerifyEstado.err{color:var(--error)}
+.page-admin #backupVerifyEstado.ok{color:#17613f}
+@media(max-width:650px){.page-admin .backup-verify-form button{width:100%;min-height:44px}}
