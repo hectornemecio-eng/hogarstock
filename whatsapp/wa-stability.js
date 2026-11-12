@@ -1,6 +1,7 @@
 "use strict";
 // Estado observacional de la conexión WhatsApp; no accede a credenciales, mensajes ni contactos.
-function crearEstabilidadWA({reloj=Date.now, estableTrasMs=120000, ventanaMs=1800000}={}){
+// v4.09: ventana de 2h por defecto: detecta cierres 500 espaciados ~50 min.
+function crearEstabilidadWA({reloj=Date.now, estableTrasMs=120000, ventanaMs=7200000}={}){
   if(typeof reloj!=="function"||!Number.isSafeInteger(estableTrasMs)||estableTrasMs<1000||
     !Number.isSafeInteger(ventanaMs)||ventanaMs<estableTrasMs)throw Error("HS_WA_ESTABILIDAD_CONFIG_INVALIDA");
   let abiertaDesde=null,ultimoCierre=null,caidas=[];

@@ -27,7 +27,7 @@ test("v4.05: conexión prolongada reinicia retroceso; apertura fugaz no",()=>{
 });
 test("v4.05: una desconexión deja de contarse tras la ventana de observación",()=>{
   let now=300000000;
-  const d=crearEstabilidadWA({reloj:()=>now});
+  const d=crearEstabilidadWA({reloj:()=>now,ventanaMs:1800000});
   d.abierta();now+=1000;d.cerrada(500);
   now+=1000;d.abierta();now+=1000;d.cerrada(500);
   assert.equal(d.estado().inestable,true);
@@ -45,4 +45,16 @@ test("v4.05: la app muestra el aviso al administrador sin introducir secretos",(
   for(const match of ui.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)){
     if(match[1].trim())new vm.Script(match[1]);
   }
+});
+
+test("v4.09: dos desconexiones 500 separadas por 50 minutos activan aviso",()=>{
+  let now=500000000;
+  const m=crearEstabilidadWA({reloj:()=>now});
+  m.abierta();now+=600000;m.cerrada(500);
+  now+=3000000;m.abierta();now+=600000;m.cerrada(500);
+  assert.equal(m.estado({conectado:true}).errores500Recientes,2);
+  assert.equal(m.estado({conectado:true}).inestable,true);
+  now+=7200001;
+  assert.equal(m.estado({conectado:true}).inestable,false);
+  assert.equal(m.estado({conectado:true}).caidasRecientes,0);
 });
