@@ -35,3 +35,8 @@
 - CI completo sin errores, incluidos simulacros sobre datos inventados y pruebas de negativas.
 - `main` actualizado, Render `live` con SHA de este hito.
 - El usuario puede descargar un respaldo y volver a cargar ese archivo para verificar/restaurar en memoria.
+
+## Recuperación persistente aislada (herramienta v4.10)
+El módulo `backup/recuperacion-local-v410.js` incluye una recuperación **en archivo SQLite NUEVO**. Requiere ruta absoluta terminada en `.sqlite` que aún no exista; usa creación exclusiva (`wx`) y falla si el fichero existe, sin sobrescribirlo. Comprueba el .hsbk y restaura primero en memoria, después reconstruye y verifica el destino local: conteos, hashes de tablas, integridad y claves foráneas. No usa red ni variables de entorno, no incluye conexión Turso ni WhatsApp, y solicita la contraseña por terminal sin mostrarla. Ejecutarlo es opcional; la verificación desde la web no exige instalar nada. Ejemplo para un operador con Node y dependencias del repositorio: `node backup/recuperacion-local-v410.js "<ruta-absoluta-hsbk>" "<ruta-absoluta-nueva.sqlite>"`. Se recomienda ejecutar en un equipo aislado y no conectar el archivo recuperado automáticamente a producción.
+
+**Alcance**: validar creación de una nueva SQLite persistente no equivale todavía a restaurar Turso/Render en producción. Para ese último paso se requiere autorización explícita, base de staging aparte, validación de sesión WA y plan de reversión.
