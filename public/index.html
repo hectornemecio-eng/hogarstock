@@ -150,22 +150,32 @@
       <details class="backup-panel">
         <summary>Descargar copia de seguridad</summary>
         <form id="formRespaldo" onsubmit="descargarRespaldo(event)">
-          <p>Guarda una copia cifrada de todas las tablas. No borra ni modifica productos o compras.</p>
-          <label for="backupAdminPassword">Tu contraseña de HogarStock</label>
+          <p><strong>Paso 1.</strong> Descarga una copia cifrada de las tablas sin modificar el inventario ni las compras. La contraseña habitual solo autoriza la descarga; la clave nueva protege el archivo guardado.</p>
+          <label for="backupAdminPassword">1. Contraseña habitual de HogarStock (autoriza la descarga)</label>
           <input id="backupAdminPassword" type="password" autocomplete="current-password"
             required minlength="8" maxlength="200">
-          <label for="backupPass">Clave para proteger este respaldo (mínimo 12 caracteres)</label>
+          <label for="backupPass">2. Contraseña de este archivo .hsbk (nueva, mínimo 12 caracteres)</label>
           <input id="backupPass" type="password" autocomplete="new-password"
             required minlength="12" maxlength="200">
-          <label for="backupConfirm">Repetir clave del respaldo</label>
+          <label for="backupConfirm">3. Confirma la contraseña del archivo .hsbk</label>
           <input id="backupConfirm" type="password" autocomplete="new-password"
             required minlength="12" maxlength="200">
           <button type="submit" id="btnRespaldo">Descargar respaldo protegido</button>
           <p id="backupEstado" role="status" aria-live="polite"></p>
-          <p>Guarda el archivo y su clave en lugares seguros y separados.
-          La clave del respaldo no es necesariamente la de acceso a HogarStock.</p>
-          <p>Para recuperar WhatsApp también se necesita la clave de cifrado
-          configurada de forma privada en Render.</p>
+          <p>Guarda el archivo .hsbk y su contraseña en lugares seguros y separados. El archivo no guarda la clave de cifrado de WhatsApp que figura en las variables privadas de Render.</p>
+          <p>Para una recuperación completa conserva también tu archivo de configuración cifrada .hskeys y su propia contraseña. No compartas estos archivos ni sus claves.</p>
+        </form>
+        <form id="formRespaldoVerificar" class="backup-verify-form" onsubmit="verificarRespaldoDescargado(event)">
+          <h3>Paso 2 · Comprobar el respaldo descargado</h3>
+          <p>Selecciona el archivo .hsbk guardado en tu equipo. Se enviará cifrado por HTTPS a esta misma aplicación, que comprobará su contenido y hará una restauración de ensayo solo en memoria. No se guarda una copia subida ni se modifica Turso.</p>
+          <label for="backupVerifyFile">Archivo .hsbk</label>
+          <input type="file" id="backupVerifyFile" accept=".hsbk,application/octet-stream" required>
+          <label for="backupVerifyPassword">Contraseña del archivo .hsbk (no la habitual de acceso)</label>
+          <input type="password" id="backupVerifyPassword" autocomplete="off" minlength="12" maxlength="200" required>
+          <button type="submit" id="btnVerificarRespaldo">Verificar archivo y simular restauración</button>
+          <p id="backupVerifyEstado" role="status" aria-live="polite"></p>
+          <div id="backupVerifyResultado" class="backup-verify-result" hidden></div>
+          <p>Máximo 8 MB para esta verificación web. Esta prueba no restaura la base de producción ni reconecta WhatsApp.</p>
         </form>
       </details>
       <details class="password-panel">
@@ -342,6 +352,68 @@
       }finally{
         actual.value="";frase.value="";confirmar.value="";
         boton.disabled=false;
+      }
+    }
+    async function verificarRespaldoDescargado(event){
+      event.preventDefault();
+      const archivo=document.getElementById("backupVerifyFile").files?.[0];
+      const campo=document.getElementById("backupVerifyPassword");
+      const boton=document.getElementById("btnVerificarRespaldo");
+      const aviso=document.getElementById("backupVerifyEstado");
+      const resultado=document.getElementById("backupVerifyResultado");
+      resultado.hidden=true;resultado.replaceChildren();
+      if(!archivo||!/^.+\.hsbk$/i.test(archivo.name)){
+        aviso.className="err";aviso.textContent="Selecciona un archivo .hsbk.";return;
+      }
+      const max=8*1024*1024;
+      const password=campo.value;
+      const bytesClave=new TextEncoder().encode(password);
+      if(password.length<12||password.length>200||bytesClave.length>800){
+        aviso.className="err";aviso.textContent="La contraseña del archivo debe tener entre 12 y 200 caracteres.";return;
+      }
+      if(archivo.size<51||archivo.size+4+bytesClave.length>max){
+        aviso.className="err";aviso.textContent="El archivo excede el límite de 8 MB o no es válido.";return;
+      }
+      boton.disabled=true;
+      aviso.className="";
+      aviso.textContent="Verificando el archivo descargado y ensayando una restauración en memoria...";
+      try{
+        const contenido=new Uint8Array(await archivo.arrayBuffer());
+        const cuerpo=new Uint8Array(4+bytesClave.length+contenido.length);
+        new DataView(cuerpo.buffer).setUint32(0,bytesClave.length,false);
+        cuerpo.set(bytesClave,4);cuerpo.set(contenido,4+bytesClave.length);
+        const res=await fetch("/api/admin/respaldo/verificar",{
+          method:"POST",headers:{"Content-Type":"application/octet-stream"},
+          body:cuerpo,cache:"no-store"
+        });
+        cuerpo.fill(0);contenido.fill(0);bytesClave.fill(0);
+        if(!res.ok){
+          aviso.className="err";
+          aviso.textContent=res.status===429?"Hay otra verificación en curso. Reintenta más tarde.":
+            res.status===413?"El archivo es demasiado grande (máximo 8 MB).":
+            "No se pudo verificar: archivo alterado, contraseña incorrecta o datos no restaurables.";
+          return;
+        }
+        const d=await res.json();
+        if(!d.ok||!d.verificado||!d.restauracionAislada)throw Error("VERIFICACION_NO_CONFIRMADA");
+        const fecha=d.fecha?new Date(d.fecha).toLocaleString():"No disponible";
+        const detalles=[
+          "Fecha de la copia: "+fecha,
+          "Tablas verificadas: "+Number(d.tablas)+" · Filas: "+Number(d.filas),
+          "Productos totales: "+Number(d.productos)+" · Activos: "+Number(d.productosActivos)+
+            " · Eliminados: "+Number(d.productosEliminados),
+          "Compras registradas: "+Number(d.compras),
+          "SHA-256 del archivo: "+String(d.sha256),
+          "Restauración de ensayo: CORRECTA (solo memoria; Turso intacto)"
+        ];
+        detalles.forEach(linea=>{const p=document.createElement("p");p.textContent=linea;resultado.append(p);});
+        resultado.hidden=false;
+        aviso.className="ok";aviso.textContent="Archivo verificado y restauración aislada satisfactoria. Conserva el .hsbk, el .hskeys y sus claves.";
+      }catch(_){
+        aviso.className="err";
+        aviso.textContent="No se pudo completar la comprobación. Comprueba tu sesión y conexión.";
+      }finally{
+        campo.value="";boton.disabled=false;
       }
     }
     async function cambiarClave(event){
